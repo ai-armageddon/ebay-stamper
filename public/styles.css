@@ -1,0 +1,259 @@
+:root {
+  --bg: #f4f1ea;
+  --ink: #1d251f;
+  --panel: #fffef9;
+  --primary: #02583a;
+  --accent: #f4b000;
+  --danger: #9c1f1f;
+  --muted: #56655d;
+  --border: #dbd5c9;
+  --shadow: 0 12px 30px rgba(11, 36, 19, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+  background: radial-gradient(circle at 20% 0%, #fff9de 0%, var(--bg) 50%);
+}
+
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.hero {
+  padding: 28px;
+  background: linear-gradient(125deg, #114334 0%, #0f2f4d 55%, #9d5f00 100%);
+  color: #fff;
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+
+.tag {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.74rem;
+  opacity: 0.9;
+}
+
+h1 {
+  margin: 10px 0 8px;
+  font-family: "Rockwell", "Courier New", serif;
+  letter-spacing: 0.02em;
+  font-size: clamp(1.8rem, 5vw, 2.8rem);
+}
+
+.subtitle {
+  margin: 0;
+  max-width: 680px;
+  color: #f4f7ef;
+}
+
+.controls {
+  margin-top: 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+label {
+  font-size: 0.82rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+input,
+select,
+button {
+  border-radius: 10px;
+  border: 1px solid #bdb5a6;
+  background: #fff;
+  font: inherit;
+  padding: 10px 12px;
+}
+
+button {
+  align-self: end;
+  background: var(--primary);
+  color: #fff;
+  border: 0;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(2, 88, 58, 0.25);
+}
+
+.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-top: 23px;
+}
+
+.stats {
+  margin-top: 14px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.statCard {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.statLabel {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.statValue {
+  margin: 6px 0 0;
+  font-size: 1.45rem;
+  font-weight: 700;
+}
+
+.meta {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  animation: fadeIn 320ms ease both;
+}
+
+.imageWrap {
+  position: relative;
+  min-height: 190px;
+  background: linear-gradient(140deg, #ddd5c7, #efeadb);
+}
+
+.imageWrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
+}
+
+.dealBadge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: #fef3cf;
+  color: #684700;
+}
+
+.content {
+  padding: 12px 14px 14px;
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.seller,
+.pricing,
+.arbitrage,
+.metaLine {
+  margin: 0 0 7px;
+  font-size: 0.9rem;
+}
+
+.seller,
+.metaLine {
+  color: var(--muted);
+}
+
+.cta {
+  display: inline-flex;
+  margin-top: 8px;
+  text-decoration: none;
+  color: #fff;
+  background: #1f3659;
+  padding: 9px 12px;
+  border-radius: 9px;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.good {
+  color: var(--primary);
+}
+
+.bad {
+  color: var(--danger);
+}
+
+.empty {
+  background: var(--panel);
+  border: 1px dashed #b8ad95;
+  border-radius: 14px;
+  padding: 22px;
+  color: var(--muted);
+}
+
+@keyframes fadeIn {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 14px;
+  }
+  .controls {
+    grid-template-columns: 1fr;
+  }
+  .checkbox {
+    margin-top: 0;
+  }
+}

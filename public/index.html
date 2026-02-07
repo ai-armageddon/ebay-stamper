@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>eBay Stamps Arbitrage Finder</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="tag">USPS vs eBay Price Intelligence</p>
+        <h1>eBay Stamps Arbitrage Finder</h1>
+        <p class="subtitle">
+          Track underpriced USPS stamp listings and surface the fastest resale opportunities.
+        </p>
+      </section>
+
+      <section class="controls">
+        <label>
+          Sort
+          <select id="sortBy">
+            <option value="discount">Biggest Discount</option>
+            <option value="price">Lowest Price</option>
+            <option value="recent">Recently Listed</option>
+          </select>
+        </label>
+        <label>
+          Stamp Type
+          <select id="stampType">
+            <option value="all">All</option>
+            <option value="domestic">Domestic Forever</option>
+            <option value="global">Global Forever</option>
+          </select>
+        </label>
+        <label>
+          Condition
+          <select id="condition">
+            <option value="all">All</option>
+            <option value="new">New</option>
+            <option value="used">Used</option>
+          </select>
+        </label>
+        <label>
+          Minimum Discount %
+          <input id="minDiscount" type="number" min="0" step="1" value="0" />
+        </label>
+        <label>
+          Query
+          <input id="query" type="text" value="usps forever stamps" />
+        </label>
+        <label class="checkbox">
+          <input id="useMock" type="checkbox" checked />
+          Allow Mock Fallback
+        </label>
+        <button id="refreshBtn" type="button">Refresh Deals</button>
+      </section>
+
+      <section class="stats" id="stats"></section>
+
+      <section class="meta" id="meta"></section>
+
+      <section class="grid" id="listingGrid"></section>
+    </main>
+
+    <template id="cardTemplate">
+      <article class="card">
+        <div class="imageWrap">
+          <img alt="Stamp Listing" loading="lazy" />
+          <span class="dealBadge"></span>
+        </div>
+        <div class="content">
+          <h2 class="title"></h2>
+          <p class="seller"></p>
+          <p class="pricing"></p>
+          <p class="arbitrage"></p>
+          <p class="metaLine"></p>
+          <a class="cta" target="_blank" rel="noopener noreferrer">View Listing</a>
+        </div>
+      </article>
+    </template>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
