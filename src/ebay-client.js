@@ -1,11 +1,20 @@
 const axios = require("axios");
 const { mockListings } = require("./mock-listings");
 
+const ENV = (process.env.EBAY_ENV || "SANDBOX").toUpperCase();
+const DEFAULT_API_BASE =
+  ENV === "PRODUCTION" ? "https://api.ebay.com" : "https://api.sandbox.ebay.com";
+const DEFAULT_TOKEN_URL =
+  ENV === "PRODUCTION"
+    ? "https://api.ebay.com/identity/v1/oauth2/token"
+    : "https://api.sandbox.ebay.com/identity/v1/oauth2/token";
+
 const {
   EBAY_APP_ID,
   EBAY_CERT_ID,
-  EBAY_TOKEN_URL = "https://api.sandbox.ebay.com/identity/v1/oauth2/token",
-  EBAY_API_BASE_URL = "https://api.sandbox.ebay.com",
+  EBAY_TOKEN, // optional pre-fetched OAuth token
+  EBAY_TOKEN_URL = DEFAULT_TOKEN_URL,
+  EBAY_API_BASE_URL = DEFAULT_API_BASE,
   EBAY_SCOPES = "https://api.ebay.com/oauth/api_scope",
 } = process.env;
 
@@ -29,6 +38,10 @@ function normalizeBrowseItem(item) {
 }
 
 async function fetchToken() {
+  if (EBAY_TOKEN) {
+    return EBAY_TOKEN;
+  }
+
   if (!EBAY_APP_ID || !EBAY_CERT_ID) {
     throw new Error("Missing EBAY_APP_ID or EBAY_CERT_ID in .env");
   }

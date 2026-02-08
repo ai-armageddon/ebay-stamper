@@ -58,7 +58,7 @@ async function handleDeals(req, res, parsedUrl) {
   const condition = parsedUrl.searchParams.get("condition") || "all";
   const minDiscount = Number(parsedUrl.searchParams.get("minDiscount") || 0);
   const query = parsedUrl.searchParams.get("q") || "usps forever stamps";
-  const useMock = parseBoolean(parsedUrl.searchParams.get("useMock"), true);
+  const useMock = parseBoolean(parsedUrl.searchParams.get("useMock"), false);
 
   try {
     const rates = await getUspsRates();
