@@ -13,17 +13,24 @@ const refs = {
   minDiscount: document.getElementById("minDiscount"),
   barThreshold: document.getElementById("barThreshold"),
   minTrust: document.getElementById("minTrust"),
+  maxResults: document.getElementById("maxResults"),
   trustTier: document.getElementById("trustTier"),
   query: document.getElementById("query"),
   profitableOnly: document.getElementById("profitableOnly"),
   useMock: document.getElementById("useMock"),
   forceEbayRefresh: document.getElementById("forceEbayRefresh"),
+  autoRefresh: document.getElementById("autoRefresh"),
+  autoRefreshSec: document.getElementById("autoRefreshSec"),
   refreshBtn: document.getElementById("refreshBtn"),
 };
 let lastDeals = [];
 let lastPayload = null;
 let listSort = { key: "opportunityScore", direction: "desc" };
 let currentViewMode = "cards";
+let isLoadingDeals = false;
+let autoRefreshTimer = null;
+
+const UI_STATE_KEY = "ebay_stamper_ui_v1";
 
 function formatMoney(value) {
   return new Intl.NumberFormat("en-US", {
@@ -56,6 +63,128 @@ function safeUrl(url) {
   } catch (error) {
     return "#";
   }
+}
+
+function parsePositiveInt(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  const rounded = Math.round(parsed);
+  if (rounded < min) {
+    return min;
+  }
+  if (rounded > max) {
+    return max;
+  }
+  return rounded;
+}
+
+function captureScrollState() {
+  const listShell = refs.listView.querySelector(".listShell");
+  return {
+    windowX: window.scrollX,
+    windowY: window.scrollY,
+    listTop: listShell ? listShell.scrollTop : 0,
+    listLeft: listShell ? listShell.scrollLeft : 0,
+  };
+}
+
+function restoreScrollState(scrollState) {
+  if (!scrollState) {
+    return;
+  }
+  requestAnimationFrame(() => {
+    window.scrollTo(scrollState.windowX, scrollState.windowY);
+    const listShell = refs.listView.querySelector(".listShell");
+    if (listShell) {
+      listShell.scrollTop = scrollState.listTop;
+      listShell.scrollLeft = scrollState.listLeft;
+    }
+  });
+}
+
+function collectUiState() {
+  return {
+    sortBy: refs.sortBy.value,
+    stampType: refs.stampType.value,
+    condition: refs.condition.value,
+    minDiscount: refs.minDiscount.value,
+    barThreshold: refs.barThreshold.value,
+    minTrust: refs.minTrust.value,
+    maxResults: refs.maxResults.value,
+    trustTier: refs.trustTier.value,
+    query: refs.query.value,
+    profitableOnly: refs.profitableOnly.checked,
+    useMock: refs.useMock.checked,
+    forceEbayRefresh: refs.forceEbayRefresh.checked,
+    autoRefresh: refs.autoRefresh.checked,
+    autoRefreshSec: refs.autoRefreshSec.value,
+    currentViewMode,
+    listSort,
+  };
+}
+
+function saveUiState() {
+  try {
+    localStorage.setItem(UI_STATE_KEY, JSON.stringify(collectUiState()));
+  } catch (error) {
+    // Ignore localStorage failures.
+  }
+}
+
+function loadUiState() {
+  try {
+    const raw = localStorage.getItem(UI_STATE_KEY);
+    if (!raw) {
+      return;
+    }
+    const state = JSON.parse(raw);
+    if (!state || typeof state !== "object") {
+      return;
+    }
+    if (state.sortBy) refs.sortBy.value = state.sortBy;
+    if (state.stampType) refs.stampType.value = state.stampType;
+    if (state.condition) refs.condition.value = state.condition;
+    if (state.minDiscount !== undefined) refs.minDiscount.value = state.minDiscount;
+    if (state.barThreshold !== undefined) refs.barThreshold.value = state.barThreshold;
+    if (state.minTrust !== undefined) refs.minTrust.value = state.minTrust;
+    if (state.maxResults !== undefined) refs.maxResults.value = state.maxResults;
+    if (state.trustTier) refs.trustTier.value = state.trustTier;
+    if (state.query !== undefined) refs.query.value = state.query;
+    if (typeof state.profitableOnly === "boolean") refs.profitableOnly.checked = state.profitableOnly;
+    if (typeof state.useMock === "boolean") refs.useMock.checked = state.useMock;
+    if (typeof state.forceEbayRefresh === "boolean") refs.forceEbayRefresh.checked = state.forceEbayRefresh;
+    if (typeof state.autoRefresh === "boolean") refs.autoRefresh.checked = state.autoRefresh;
+    if (state.autoRefreshSec) refs.autoRefreshSec.value = state.autoRefreshSec;
+    if (state.currentViewMode) currentViewMode = state.currentViewMode;
+    if (state.listSort && state.listSort.key && state.listSort.direction) {
+      listSort = state.listSort;
+    }
+  } catch (error) {
+    // Ignore parse/storage failures.
+  }
+}
+
+function stopAutoRefresh() {
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  if (!refs.autoRefresh.checked) {
+    return;
+  }
+  const seconds = parsePositiveInt(refs.autoRefreshSec.value, 120, {
+    min: 30,
+    max: 3600,
+  });
+  autoRefreshTimer = setInterval(() => {
+    loadDeals({ trigger: "auto", preserveScroll: true });
+  }, seconds * 1000);
 }
 
 function statCard(label, value) {
@@ -98,6 +227,7 @@ function setStats(payload) {
     statCard("Compared", String(payload.totalCompared || 0)),
     statCard("After Filters", String(payload.totalAfterFilters || 0)),
     statCard("Pulled This Call", String(crawl.fetchedCount || payload.totalListings || 0)),
+    statCard("eBay API Calls", String(crawl.apiCallsUsed || 0)),
   ].join("");
 }
 
@@ -116,7 +246,8 @@ function setMeta(payload) {
   refs.meta.textContent =
     `Rates: ${payload.ratesSource} | Listings: ${payload.listingsSource} via ${cacheLabel} | ` +
     `Compared: ${payload.totalCompared} | Filtered: ${payload.totalAfterFilters} | ` +
-    `Pulled: ${crawl.fetchedCount || payload.totalListings} of estimated ${estimate} matches | Best: ${best}`;
+    `Pulled: ${crawl.fetchedCount || payload.totalListings} of estimated ${estimate} matches | ` +
+    `Requested: ${crawl.maxResultsRequested || refs.maxResults.value} | Best: ${best}`;
 }
 
 function makeBadge(deal) {
@@ -426,13 +557,16 @@ function renderListDeals(deals) {
 
   refs.listView.querySelectorAll("[data-sort-key]").forEach((button) => {
     button.addEventListener("click", () => {
+      const scrollState = captureScrollState();
       const nextKey = button.getAttribute("data-sort-key");
       if (listSort.key === nextKey) {
         listSort.direction = listSort.direction === "asc" ? "desc" : "asc";
       } else {
         listSort = { key: nextKey, direction: "desc" };
       }
+      saveUiState();
       renderListDeals(lastDeals);
+      restoreScrollState(scrollState);
     });
   });
 }
@@ -455,12 +589,22 @@ function setViewMode(mode) {
     const active = button.getAttribute("data-view-mode") === mode;
     button.classList.toggle("active", active);
   });
+  saveUiState();
   renderDeals(lastDeals);
 }
 
-async function loadDeals() {
-  refs.refreshBtn.disabled = true;
-  refs.refreshBtn.textContent = "Loading...";
+async function loadDeals(options = {}) {
+  const { trigger = "manual", preserveScroll = true } = options;
+  if (isLoadingDeals) {
+    return;
+  }
+  isLoadingDeals = true;
+  const scrollState = preserveScroll ? captureScrollState() : null;
+
+  if (trigger === "manual") {
+    refs.refreshBtn.disabled = true;
+    refs.refreshBtn.textContent = "Loading...";
+  }
   try {
     const params = new URLSearchParams({
       sort: refs.sortBy.value,
@@ -468,6 +612,9 @@ async function loadDeals() {
       condition: refs.condition.value,
       minDiscount: refs.minDiscount.value,
       minTrust: refs.minTrust.value,
+      maxResults: String(
+        parsePositiveInt(refs.maxResults.value, 150, { min: 50, max: 250 })
+      ),
       trustTier: refs.trustTier.value,
       q: refs.query.value,
       profitableOnly: refs.profitableOnly.checked ? "true" : "false",
@@ -486,18 +633,25 @@ async function loadDeals() {
     setStats(payload);
     setMeta(payload);
     renderDeals(lastDeals);
+    restoreScrollState(scrollState);
+    saveUiState();
   } catch (error) {
     refs.barBoard.classList.add("hidden");
     refs.listView.classList.add("hidden");
     refs.grid.classList.remove("hidden");
     refs.grid.innerHTML = `<div class="empty">${error.message}</div>`;
   } finally {
-    refs.refreshBtn.disabled = false;
-    refs.refreshBtn.textContent = "Refresh Deals";
+    if (trigger === "manual") {
+      refs.refreshBtn.disabled = false;
+      refs.refreshBtn.textContent = "Refresh Deals";
+    }
+    isLoadingDeals = false;
   }
 }
 
-refs.refreshBtn.addEventListener("click", loadDeals);
+refs.refreshBtn.addEventListener("click", () =>
+  loadDeals({ trigger: "manual", preserveScroll: true })
+);
 refs.viewButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const mode = button.getAttribute("data-view-mode");
@@ -505,8 +659,43 @@ refs.viewButtons.forEach((button) => {
   });
 });
 refs.barThreshold.addEventListener("input", () => {
+  saveUiState();
   if (currentViewMode === "bars") {
     renderDeals(lastDeals);
   }
 });
-window.addEventListener("load", loadDeals);
+
+[
+  refs.sortBy,
+  refs.stampType,
+  refs.condition,
+  refs.minDiscount,
+  refs.minTrust,
+  refs.maxResults,
+  refs.trustTier,
+  refs.query,
+  refs.profitableOnly,
+  refs.useMock,
+  refs.forceEbayRefresh,
+].forEach((control) => {
+  control.addEventListener("change", saveUiState);
+});
+
+refs.autoRefresh.addEventListener("change", () => {
+  saveUiState();
+  startAutoRefresh();
+});
+
+refs.autoRefreshSec.addEventListener("change", () => {
+  saveUiState();
+  startAutoRefresh();
+});
+
+window.addEventListener("beforeunload", stopAutoRefresh);
+
+window.addEventListener("load", () => {
+  loadUiState();
+  setViewMode(currentViewMode);
+  startAutoRefresh();
+  loadDeals({ trigger: "manual", preserveScroll: false });
+});

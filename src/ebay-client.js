@@ -17,8 +17,14 @@ const {
   EBAY_API_BASE_URL = DEFAULT_API_BASE,
   EBAY_SCOPES = "https://api.ebay.com/oauth/api_scope",
   LISTINGS_CACHE_MS = "90000",
+  EBAY_MAX_RESULTS = "150",
+  EBAY_MAX_PAGES = "5",
 } = process.env;
 const DEFAULT_LISTINGS_CACHE_MS = Number(LISTINGS_CACHE_MS) || 90000;
+const DEFAULT_MAX_RESULTS = Number(EBAY_MAX_RESULTS) || 150;
+const DEFAULT_MAX_PAGES = Number(EBAY_MAX_PAGES) || 5;
+const MAX_PAGE_SIZE = 50;
+const MAX_ALLOWED_RESULTS = MAX_PAGE_SIZE * DEFAULT_MAX_PAGES;
 const listingsCache = new Map();
 
 function normalizeBrowseItem(item) {
@@ -96,12 +102,29 @@ async function fetchToken(options = {}) {
   return response.data.access_token;
 }
 
-async function searchItems(query, token) {
+function sanitizePositiveInt(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  const rounded = Math.round(parsed);
+  if (rounded < min) {
+    return min;
+  }
+  if (rounded > max) {
+    return max;
+  }
+  return rounded;
+}
+
+async function searchItems(query, token, options = {}) {
+  const { limit = MAX_PAGE_SIZE, offset = 0 } = options;
   const searchUrl = `${EBAY_API_BASE_URL}/buy/browse/v1/item_summary/search`;
   const response = await axios.get(searchUrl, {
     params: {
       q: query,
-      limit: 50,
+      limit,
+      offset,
       sort: "best_match",
       category_ids: "260",
       filter: "buyingOptions:{FIXED_PRICE}",
@@ -116,17 +139,16 @@ async function searchItems(query, token) {
   return response;
 }
 
-async function fetchFromEbay(query) {
-  let token = await fetchToken({ allowPrefetched: true });
+async function runSearchWithTokenRetry(query, tokenState, options = {}) {
   let response;
   try {
-    response = await searchItems(query, token);
+    response = await searchItems(query, tokenState.token, options);
   } catch (error) {
     const isUnauthorized = error.response && error.response.status === 401;
     const canMintFreshToken = Boolean(EBAY_APP_ID && EBAY_CERT_ID);
     if (isUnauthorized && canMintFreshToken) {
-      token = await fetchToken({ allowPrefetched: false });
-      response = await searchItems(query, token);
+      tokenState.token = await fetchToken({ allowPrefetched: false });
+      response = await searchItems(query, tokenState.token, options);
     } else if (isUnauthorized) {
       throw new Error(
         "eBay returned 401. Your EBAY_TOKEN is likely expired. Provide a fresh EBAY_TOKEN or set EBAY_APP_ID and EBAY_CERT_ID."
@@ -135,19 +157,86 @@ async function fetchFromEbay(query) {
       throw error;
     }
   }
+  return response;
+}
 
-  const items = response.data && response.data.itemSummaries
-    ? response.data.itemSummaries
-    : [];
-  const totalMatchesEstimate = Number(
-    response.data && response.data.total ? response.data.total : items.length
+async function fetchFromEbay(query, options = {}) {
+  const maxResults = sanitizePositiveInt(
+    options.maxResults,
+    DEFAULT_MAX_RESULTS,
+    { min: 1, max: MAX_ALLOWED_RESULTS }
   );
+  const maxPages = sanitizePositiveInt(
+    options.maxPages,
+    DEFAULT_MAX_PAGES,
+    { min: 1, max: 10 }
+  );
+  const pageSize = Math.min(MAX_PAGE_SIZE, maxResults);
+  const pagesBudget = Math.max(1, Math.min(maxPages, Math.ceil(maxResults / pageSize)));
+
+  let token = await fetchToken({ allowPrefetched: true });
+  const tokenState = { token };
+  let totalMatchesEstimate = 0;
+  let apiCallsUsed = 0;
+  const rawItems = [];
+  const seenIds = new Set();
+
+  for (let page = 0; page < pagesBudget; page += 1) {
+    const offset = page * pageSize;
+    const remaining = maxResults - rawItems.length;
+    if (remaining <= 0) {
+      break;
+    }
+
+    const response = await runSearchWithTokenRetry(query, tokenState, {
+      limit: Math.min(pageSize, remaining),
+      offset,
+    });
+    apiCallsUsed += 1;
+
+    const items =
+      response.data && Array.isArray(response.data.itemSummaries)
+        ? response.data.itemSummaries
+        : [];
+    const responseTotal = Number(
+      response.data && response.data.total ? response.data.total : items.length
+    );
+    if (Number.isFinite(responseTotal) && responseTotal > 0) {
+      totalMatchesEstimate = Math.max(totalMatchesEstimate, responseTotal);
+    }
+
+    for (const item of items) {
+      const uniqueId = item && (item.itemId || item.legacyItemId);
+      if (uniqueId && seenIds.has(uniqueId)) {
+        continue;
+      }
+      if (uniqueId) {
+        seenIds.add(uniqueId);
+      }
+      rawItems.push(item);
+      if (rawItems.length >= maxResults) {
+        break;
+      }
+    }
+
+    if (items.length < Math.min(pageSize, remaining)) {
+      break;
+    }
+    if (totalMatchesEstimate > 0 && rawItems.length >= totalMatchesEstimate) {
+      break;
+    }
+  }
+
+  const listings = rawItems.map(normalizeBrowseItem).slice(0, maxResults);
+
   return {
-    listings: items.map(normalizeBrowseItem),
-    fetchedCount: items.length,
+    listings,
+    fetchedCount: listings.length,
     totalMatchesEstimate: Number.isNaN(totalMatchesEstimate)
-      ? items.length
-      : totalMatchesEstimate,
+      ? listings.length
+      : totalMatchesEstimate || listings.length,
+    apiCallsUsed,
+    maxResultsRequested: maxResults,
   };
 }
 
@@ -157,8 +246,18 @@ async function getListings(options = {}) {
     useMock = true,
     forceRefresh = false,
     cacheTtlMs = DEFAULT_LISTINGS_CACHE_MS,
+    maxResults = DEFAULT_MAX_RESULTS,
+    maxPages = DEFAULT_MAX_PAGES,
   } = options;
-  const cacheKey = String(query || "").trim().toLowerCase();
+  const requestedMaxResults = sanitizePositiveInt(maxResults, DEFAULT_MAX_RESULTS, {
+    min: 1,
+    max: MAX_ALLOWED_RESULTS,
+  });
+  const requestedMaxPages = sanitizePositiveInt(maxPages, DEFAULT_MAX_PAGES, {
+    min: 1,
+    max: 10,
+  });
+  const cacheKey = `${String(query || "").trim().toLowerCase()}|${requestedMaxResults}|${requestedMaxPages}`;
   const now = Date.now();
   const cached = listingsCache.get(cacheKey);
 
@@ -167,15 +266,23 @@ async function getListings(options = {}) {
     cached &&
     now - cached.cachedAt <= Number(cacheTtlMs || DEFAULT_LISTINGS_CACHE_MS)
   ) {
+    const cachedStats = cached.payload && cached.payload.stats ? cached.payload.stats : {};
     return {
       ...cached.payload,
       fetchMode: "cache",
       cacheAgeMs: now - cached.cachedAt,
+      stats: {
+        ...cachedStats,
+        apiCallsUsed: 0,
+      },
     };
   }
 
   try {
-    const ebayResult = await fetchFromEbay(query);
+    const ebayResult = await fetchFromEbay(query, {
+      maxResults: requestedMaxResults,
+      maxPages: requestedMaxPages,
+    });
     const listings = ebayResult.listings;
     if (listings.length === 0 && useMock) {
       return {
@@ -187,6 +294,8 @@ async function getListings(options = {}) {
           comparedCount: mockListings.length,
           fetchedCount: 0,
           totalMatchesEstimate: ebayResult.totalMatchesEstimate,
+          apiCallsUsed: ebayResult.apiCallsUsed,
+          maxResultsRequested: requestedMaxResults,
         },
       };
     }
@@ -199,6 +308,8 @@ async function getListings(options = {}) {
         comparedCount: listings.length,
         fetchedCount: ebayResult.fetchedCount,
         totalMatchesEstimate: ebayResult.totalMatchesEstimate,
+        apiCallsUsed: ebayResult.apiCallsUsed,
+        maxResultsRequested: ebayResult.maxResultsRequested,
       },
     };
     listingsCache.set(cacheKey, {
@@ -219,6 +330,8 @@ async function getListings(options = {}) {
         comparedCount: mockListings.length,
         fetchedCount: 0,
         totalMatchesEstimate: mockListings.length,
+        apiCallsUsed: 0,
+        maxResultsRequested: requestedMaxResults,
       },
     };
   }

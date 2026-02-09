@@ -69,6 +69,10 @@
           <input id="minTrust" type="number" min="0" max="100" step="1" value="0" />
         </label>
         <label>
+          Max Results
+          <input id="maxResults" type="number" min="50" max="250" step="50" value="150" />
+        </label>
+        <label>
           Trust Tier
           <select id="trustTier">
             <option value="all">All</option>
@@ -92,6 +96,20 @@
         <label class="checkbox">
           <input id="forceEbayRefresh" type="checkbox" />
           Force Live eBay Refresh
+        </label>
+        <label class="checkbox">
+          <input id="autoRefresh" type="checkbox" />
+          Auto Refresh
+        </label>
+        <label>
+          Refresh Every
+          <select id="autoRefreshSec">
+            <option value="60">60 sec</option>
+            <option value="90">90 sec</option>
+            <option value="120" selected>120 sec</option>
+            <option value="180">180 sec</option>
+            <option value="300">300 sec</option>
+          </select>
         </label>
         <button id="refreshBtn" type="button">Refresh Deals</button>
       </section>

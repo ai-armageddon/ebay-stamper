@@ -488,7 +488,7 @@ button:hover {
   width: 100%;
   border-collapse: collapse;
   min-width: 1120px;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .listTable th,
@@ -519,10 +519,14 @@ button:hover {
 }
 
 .colTitle {
-  max-width: 460px;
-  white-space: normal;
+  max-width: none;
+  min-width: 340px;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   overflow: visible;
   text-overflow: clip;
+  line-height: 1.32;
 }
 
 .listSortBtn {
@@ -546,11 +550,11 @@ button:hover {
 }
 
 .colTitleWidth {
-  width: 38%;
+  width: 44%;
 }
 
 .colNumeric {
-  width: 9%;
+  width: 7%;
 }
 
 .colSeller {

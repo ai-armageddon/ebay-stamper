@@ -16,6 +16,8 @@ function inferStampType(title) {
 
 function inferStampCount(title) {
   const text = String(title || "").toLowerCase();
+  const currentYear = new Date().getUTCFullYear() + 1;
+  const isLikelyIssueYear = (value) => value >= 1900 && value <= currentYear;
   const groupedQuantityMatch = text.match(
     /\b(\d{1,3})\s*(?:rolls?|coils?|packs?|books?|booklets?|sheets?)\s*(?:of|x)\s*(\d{1,4})\b/i
   );
@@ -24,6 +26,21 @@ function inferStampCount(title) {
     const perUnit = Number(groupedQuantityMatch[2]);
     if (!Number.isNaN(units) && !Number.isNaN(perUnit) && units > 0 && perUnit > 0) {
       return units * perUnit;
+    }
+  }
+
+  const leadingQuantityMatch = text.match(
+    /^(?:usps|u\.s\.|u\.s\.p\.s\.|forever|postage|stamps?|mail|authentic|genuine|sheet|booklet|book|pack|roll|coil|\W)*\s*(\d{1,4})\b/i
+  );
+  if (leadingQuantityMatch && leadingQuantityMatch[1]) {
+    const leadingCount = Number(leadingQuantityMatch[1]);
+    if (
+      Number.isFinite(leadingCount) &&
+      leadingCount > 0 &&
+      leadingCount <= 500 &&
+      !isLikelyIssueYear(leadingCount)
+    ) {
+      return leadingCount;
     }
   }
 
@@ -44,15 +61,9 @@ function inferStampCount(title) {
       continue;
     }
 
-    // Protect against issue year tokens like "2020 stamps".
-    const currentYear = new Date().getUTCFullYear() + 1;
     const matchText = String(match[0] || "");
-    const yearLikeWithStamps =
-      count >= 1900 &&
-      count <= currentYear &&
-      /\bstamps?\b/i.test(matchText) &&
-      !/\b(?:ct|count|pack|book|booklet|sheet|roll|coil|lot|pcs?|pc)\b/i.test(matchText);
-    if (yearLikeWithStamps) {
+    const hasStrictCountMarker = /\b(?:ct|count|pcs?|pc)\b/i.test(matchText);
+    if (isLikelyIssueYear(count) && !hasStrictCountMarker) {
       continue;
     }
 

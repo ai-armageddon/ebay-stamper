@@ -22,6 +22,12 @@ test("inferStampCount reads explicit counts and defaults", () => {
     ),
     20
   );
+  assert.equal(
+    inferStampCount(
+      "USPS 20 HALLOWEEN JACK O LANTERN FOREVER US POSTAGE STAMPS 2015 BOOKLET PUMPKINS"
+    ),
+    20
+  );
   assert.equal(inferStampCount("USPS Coil"), 100);
   assert.equal(inferStampCount("single forever stamp"), 1);
 });

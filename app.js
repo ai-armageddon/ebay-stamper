@@ -68,6 +68,8 @@ async function handleDeals(req, res, parsedUrl) {
     parsedUrl.searchParams.get("forceEbayRefresh"),
     false
   );
+  const maxResults = Number(parsedUrl.searchParams.get("maxResults") || 150);
+  const maxPages = Number(parsedUrl.searchParams.get("maxPages") || 5);
   const query = parsedUrl.searchParams.get("q") || "usps forever stamps";
   const useMock = parseBoolean(parsedUrl.searchParams.get("useMock"), false);
 
@@ -77,6 +79,8 @@ async function handleDeals(req, res, parsedUrl) {
       query,
       useMock,
       forceRefresh: forceEbayRefresh,
+      maxResults,
+      maxPages,
     });
     const allDeals = buildDeals(listingsResult.listings, rates.rates);
     const filteredDeals = applyFilters(allDeals, {
@@ -102,6 +106,8 @@ async function handleDeals(req, res, parsedUrl) {
         comparedCount: listingsResult.listings.length,
         fetchedCount: listingsResult.listings.length,
         totalMatchesEstimate: listingsResult.listings.length,
+        apiCallsUsed: 1,
+        maxResultsRequested: maxResults,
       },
       totalCompared: allDeals.length,
       totalAfterFilters: filteredDeals.length,
