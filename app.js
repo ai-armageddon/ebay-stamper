@@ -64,12 +64,20 @@ async function handleDeals(req, res, parsedUrl) {
     parsedUrl.searchParams.get("profitableOnly"),
     false
   );
+  const forceEbayRefresh = parseBoolean(
+    parsedUrl.searchParams.get("forceEbayRefresh"),
+    false
+  );
   const query = parsedUrl.searchParams.get("q") || "usps forever stamps";
   const useMock = parseBoolean(parsedUrl.searchParams.get("useMock"), false);
 
   try {
     const rates = await getUspsRates();
-    const listingsResult = await getListings({ query, useMock });
+    const listingsResult = await getListings({
+      query,
+      useMock,
+      forceRefresh: forceEbayRefresh,
+    });
     const allDeals = buildDeals(listingsResult.listings, rates.rates);
     const filteredDeals = applyFilters(allDeals, {
       stampType,
@@ -87,7 +95,16 @@ async function handleDeals(req, res, parsedUrl) {
       rates: rates.rates,
       ratesSource: rates.source,
       listingsSource: listingsResult.source,
+      listingsFetchMode: listingsResult.fetchMode || "api",
+      listingsCacheAgeMs: Number(listingsResult.cacheAgeMs || 0),
       totalListings: listingsResult.listings.length,
+      crawlStats: listingsResult.stats || {
+        comparedCount: listingsResult.listings.length,
+        fetchedCount: listingsResult.listings.length,
+        totalMatchesEstimate: listingsResult.listings.length,
+      },
+      totalCompared: allDeals.length,
+      totalAfterFilters: filteredDeals.length,
       summary,
       deals: sortedDeals,
     });

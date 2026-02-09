@@ -16,7 +16,10 @@ const {
   EBAY_TOKEN_URL = DEFAULT_TOKEN_URL,
   EBAY_API_BASE_URL = DEFAULT_API_BASE,
   EBAY_SCOPES = "https://api.ebay.com/oauth/api_scope",
+  LISTINGS_CACHE_MS = "90000",
 } = process.env;
+const DEFAULT_LISTINGS_CACHE_MS = Number(LISTINGS_CACHE_MS) || 90000;
+const listingsCache = new Map();
 
 function normalizeBrowseItem(item) {
   const shippingOptions = Array.isArray(item.shippingOptions) ? item.shippingOptions : [];
@@ -136,22 +139,88 @@ async function fetchFromEbay(query) {
   const items = response.data && response.data.itemSummaries
     ? response.data.itemSummaries
     : [];
-  return items.map(normalizeBrowseItem);
+  const totalMatchesEstimate = Number(
+    response.data && response.data.total ? response.data.total : items.length
+  );
+  return {
+    listings: items.map(normalizeBrowseItem),
+    fetchedCount: items.length,
+    totalMatchesEstimate: Number.isNaN(totalMatchesEstimate)
+      ? items.length
+      : totalMatchesEstimate,
+  };
 }
 
 async function getListings(options = {}) {
-  const { query = "usps forever stamps", useMock = true } = options;
+  const {
+    query = "usps forever stamps",
+    useMock = true,
+    forceRefresh = false,
+    cacheTtlMs = DEFAULT_LISTINGS_CACHE_MS,
+  } = options;
+  const cacheKey = String(query || "").trim().toLowerCase();
+  const now = Date.now();
+  const cached = listingsCache.get(cacheKey);
+
+  if (
+    !forceRefresh &&
+    cached &&
+    now - cached.cachedAt <= Number(cacheTtlMs || DEFAULT_LISTINGS_CACHE_MS)
+  ) {
+    return {
+      ...cached.payload,
+      fetchMode: "cache",
+      cacheAgeMs: now - cached.cachedAt,
+    };
+  }
+
   try {
-    const listings = await fetchFromEbay(query);
+    const ebayResult = await fetchFromEbay(query);
+    const listings = ebayResult.listings;
     if (listings.length === 0 && useMock) {
-      return { source: "mock-empty-ebay", listings: mockListings };
+      return {
+        source: "mock-empty-ebay",
+        fetchMode: "mock",
+        cacheAgeMs: 0,
+        listings: mockListings,
+        stats: {
+          comparedCount: mockListings.length,
+          fetchedCount: 0,
+          totalMatchesEstimate: ebayResult.totalMatchesEstimate,
+        },
+      };
     }
-    return { source: "ebay", listings };
+    const payload = {
+      source: "ebay",
+      fetchMode: "api",
+      cacheAgeMs: 0,
+      listings,
+      stats: {
+        comparedCount: listings.length,
+        fetchedCount: ebayResult.fetchedCount,
+        totalMatchesEstimate: ebayResult.totalMatchesEstimate,
+      },
+    };
+    listingsCache.set(cacheKey, {
+      cachedAt: now,
+      payload,
+    });
+    return payload;
   } catch (error) {
     if (!useMock) {
       throw error;
     }
-    return { source: "mock-fallback", listings: mockListings };
+    return {
+      source: "mock-fallback",
+      fetchMode: "mock",
+      cacheAgeMs: 0,
+      listings: mockListings,
+      stats: {
+        comparedCount: mockListings.length,
+        fetchedCount: 0,
+        totalMatchesEstimate: mockListings.length,
+      },
+    };
   }
 }
 

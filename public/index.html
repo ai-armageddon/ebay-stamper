@@ -9,11 +9,24 @@
   <body>
     <main class="page">
       <section class="hero">
-        <p class="tag">USPS vs eBay Price Intelligence</p>
+        <div class="heroBrand">
+          <img
+            class="ebayLogo"
+            src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg"
+            alt="eBay"
+          />
+          <p class="tag">USPS vs eBay Price Intelligence</p>
+        </div>
         <h1>eBay Stamps Arbitrage Finder</h1>
         <p class="subtitle">
           Track underpriced USPS stamp listings and surface the fastest resale opportunities.
         </p>
+      </section>
+
+      <section class="viewSwitch" aria-label="View mode">
+        <button class="viewBtn active" data-view-mode="cards" type="button">Cards</button>
+        <button class="viewBtn" data-view-mode="bars" type="button">Bars</button>
+        <button class="viewBtn" data-view-mode="list" type="button">List</button>
       </section>
 
       <section class="controls">
@@ -48,6 +61,10 @@
           <input id="minDiscount" type="number" min="0" step="1" value="0" />
         </label>
         <label>
+          Bar Threshold %
+          <input id="barThreshold" type="number" min="0" step="1" value="10" />
+        </label>
+        <label>
           Minimum Trust Score
           <input id="minTrust" type="number" min="0" max="100" step="1" value="0" />
         </label>
@@ -72,14 +89,22 @@
           <input id="useMock" type="checkbox" />
           Allow Mock Fallback
         </label>
+        <label class="checkbox">
+          <input id="forceEbayRefresh" type="checkbox" />
+          Force Live eBay Refresh
+        </label>
         <button id="refreshBtn" type="button">Refresh Deals</button>
       </section>
+
+      <section class="quickLook" id="quickLook"></section>
 
       <section class="stats" id="stats"></section>
 
       <section class="meta" id="meta"></section>
 
       <section class="grid" id="listingGrid"></section>
+      <section class="barBoard hidden" id="barBoard"></section>
+      <section class="listView hidden" id="listView"></section>
     </main>
 
     <template id="cardTemplate">
@@ -90,11 +115,17 @@
         </div>
         <div class="content">
           <h2 class="title"></h2>
+          <div class="itemTopStats">
+            <p class="metric metricPerStamp"></p>
+            <p class="metric metricTotalBuy"></p>
+            <p class="metric metricMultiplier"></p>
+          </div>
           <p class="seller"></p>
           <p class="trust"></p>
           <p class="signal"></p>
           <p class="description"></p>
           <p class="pricing"></p>
+          <p class="perStamp"></p>
           <p class="arbitrage"></p>
           <p class="metaLine"></p>
           <a class="cta" target="_blank" rel="noopener noreferrer">View Listing</a>

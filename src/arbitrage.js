@@ -16,14 +16,47 @@ function inferStampType(title) {
 
 function inferStampCount(title) {
   const text = String(title || "").toLowerCase();
-  const countMatch = text.match(/(\d{1,4})\s*(?:ct|count|stamps?|pcs?|pc)\b/i);
-  if (countMatch) {
-    return Number(countMatch[1]);
+  const groupedQuantityMatch = text.match(
+    /\b(\d{1,3})\s*(?:rolls?|coils?|packs?|books?|booklets?|sheets?)\s*(?:of|x)\s*(\d{1,4})\b/i
+  );
+  if (groupedQuantityMatch) {
+    const units = Number(groupedQuantityMatch[1]);
+    const perUnit = Number(groupedQuantityMatch[2]);
+    if (!Number.isNaN(units) && !Number.isNaN(perUnit) && units > 0 && perUnit > 0) {
+      return units * perUnit;
+    }
   }
 
-  const ofMatch = text.match(/\b(?:book|booklet|pack|sheet|lot|coil)\s*(?:of)?\s*(\d{1,4})\b/i);
-  if (ofMatch) {
-    return Number(ofMatch[1]);
+  const explicitPatterns = [
+    /\b(\d{1,4})\s*[- ]?(?:ct|count)\b/i,
+    /\b(\d{1,4})\s*[- ]?(?:pack|pk|book(?:let)?|sheet|roll|coil)\b/i,
+    /\b(?:book|booklet|pack|sheet|lot|coil|roll)\s*(?:of\s*)?(\d{1,4})\b/i,
+    /\b(\d{1,4})\s*(?:stamps?|pcs?|pc)\b/i,
+  ];
+
+  for (const pattern of explicitPatterns) {
+    const match = text.match(pattern);
+    if (!match || !match[1]) {
+      continue;
+    }
+    const count = Number(match[1]);
+    if (Number.isNaN(count) || count <= 0) {
+      continue;
+    }
+
+    // Protect against issue year tokens like "2020 stamps".
+    const currentYear = new Date().getUTCFullYear() + 1;
+    const matchText = String(match[0] || "");
+    const yearLikeWithStamps =
+      count >= 1900 &&
+      count <= currentYear &&
+      /\bstamps?\b/i.test(matchText) &&
+      !/\b(?:ct|count|pack|book|booklet|sheet|roll|coil|lot|pcs?|pc)\b/i.test(matchText);
+    if (yearLikeWithStamps) {
+      continue;
+    }
+
+    return count;
   }
 
   if (text.includes("booklet")) {
@@ -125,6 +158,10 @@ function computeDeal(listing, rates) {
   const marketValue = roundCurrency(uspsRate * stampCount);
   const savings = roundCurrency(marketValue - totalCost);
   const discountPct = marketValue > 0 ? roundCurrency((savings / marketValue) * 100) : 0;
+  const costPerStamp = stampCount > 0 ? roundCurrency(totalCost / stampCount) : 0;
+  const perStampSavings = roundCurrency(uspsRate - costPerStamp);
+  const perStampDiscountPct =
+    uspsRate > 0 ? roundCurrency((perStampSavings / uspsRate) * 100) : 0;
   const trust = computeSellerTrust(listing);
   const opportunityScore = computeOpportunityScore({
     discountPct,
@@ -163,6 +200,10 @@ function computeDeal(listing, rates) {
     underpricedDollars: savings,
     discountPct,
     underpricedPct: discountPct,
+    costPerStamp,
+    uspsPerStamp: roundCurrency(uspsRate),
+    perStampSavings,
+    perStampDiscountPct,
     profitable,
     trustScore: trust.trustScore,
     trustTier: trust.trustTier,
@@ -265,6 +306,13 @@ function getSummary(deals) {
     bestDealTitle: bestDeal ? bestDeal.title : null,
     bestDealDiscount: bestDeal ? bestDeal.discountPct : null,
     bestDealSignal: bestDeal ? bestDeal.buySignal : null,
+    bestDealCostPerStamp: bestDeal ? bestDeal.costPerStamp : null,
+    bestDealUspsPerStamp: bestDeal ? bestDeal.uspsPerStamp : null,
+    bestDealTotalCost: bestDeal ? bestDeal.totalCost : null,
+    bestDealMultiplier:
+      bestDeal && Number(bestDeal.totalCost) > 0
+        ? roundCurrency(Number(bestDeal.marketValue) / Number(bestDeal.totalCost))
+        : null,
   };
 }
 

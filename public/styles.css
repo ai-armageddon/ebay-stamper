@@ -35,6 +35,19 @@ body {
   box-shadow: var(--shadow);
 }
 
+.heroBrand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ebayLogo {
+  width: 84px;
+  height: auto;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.2));
+}
+
 .tag {
   margin: 0;
   text-transform: uppercase;
@@ -54,6 +67,31 @@ h1 {
   margin: 0;
   max-width: 680px;
   color: #f4f7ef;
+}
+
+.viewSwitch {
+  margin-top: 12px;
+  display: inline-flex;
+  background: #f0e6cc;
+  border: 1px solid #cdbf9b;
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+}
+
+.viewBtn {
+  border: 0;
+  background: transparent;
+  color: #294034;
+  padding: 8px 14px;
+  border-radius: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.viewBtn.active {
+  background: #193f30;
+  color: #fff;
 }
 
 .controls {
@@ -113,6 +151,27 @@ button:hover {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
+.quickLook {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.quickLook .statCard {
+  border-color: #c7ad6a;
+  background: linear-gradient(130deg, #fff9ea 0%, #f8ebbf 100%);
+  padding: 9px 10px;
+}
+
+.quickLook .statLabel {
+  font-size: 0.68rem;
+}
+
+.quickLook .statValue {
+  font-size: 1.15rem;
+}
+
 .statCard {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -145,6 +204,10 @@ button:hover {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 14px;
+}
+
+.hidden {
+  display: none;
 }
 
 .card {
@@ -223,11 +286,30 @@ button:hover {
   line-height: 1.35;
 }
 
+.itemTopStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.metric {
+  margin: 0;
+  font-size: 0.77rem;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 6px 7px;
+  line-height: 1.2;
+  background: #f2ead8;
+  color: #33473d;
+}
+
 .seller,
 .trust,
 .signal,
 .description,
 .pricing,
+.perStamp,
 .arbitrage,
 .metaLine {
   margin: 0 0 7px;
@@ -237,6 +319,7 @@ button:hover {
 .seller,
 .trust,
 .description,
+.perStamp,
 .metaLine {
   color: var(--muted);
 }
@@ -294,6 +377,198 @@ button:hover {
   color: var(--muted);
 }
 
+.barBoard {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.barRow {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.barHeader,
+.barFooter {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.barTitle {
+  margin: 0;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.barMetrics {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.barTrack {
+  height: 14px;
+  border-radius: 999px;
+  background: #ece5d8;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.barFill.elite {
+  background: linear-gradient(90deg, #ffd462 0%, #ffb000 100%);
+}
+
+.barFill.strong {
+  background: linear-gradient(90deg, #67d08f 0%, #2f8c55 100%);
+}
+
+.barFill.watch {
+  background: linear-gradient(90deg, #78baf8 0%, #2e70b4 100%);
+}
+
+.barFill.pass {
+  background: linear-gradient(90deg, #f4a6a6 0%, #be5b5b 100%);
+}
+
+.barFooter {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.barKeyMetrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.barMetricChip {
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: #efe6d4;
+  color: #32473c;
+  border-radius: 999px;
+  padding: 5px 10px;
+}
+
+.barCta {
+  justify-self: start;
+  display: inline-flex;
+  text-decoration: none;
+  color: #fff;
+  background: #1f3659;
+  padding: 7px 11px;
+  border-radius: 9px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.listView {
+  margin-top: 16px;
+}
+
+.listShell {
+  background: #0f1722;
+  border: 1px solid #2b3a4f;
+  border-radius: 14px;
+  overflow: auto;
+}
+
+.listTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1120px;
+  table-layout: fixed;
+}
+
+.listTable th,
+.listTable td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #233246;
+  font-size: 0.88rem;
+  text-align: left;
+  color: #dbe8f7;
+  vertical-align: top;
+}
+
+.listTable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #142033;
+}
+
+.listTable td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.listTable tbody tr:hover {
+  background: #18263a;
+}
+
+.colTitle {
+  max-width: 460px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.listSortBtn {
+  border: 0;
+  background: transparent;
+  color: #deebfb;
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+  cursor: pointer;
+}
+
+.listSortBtn.active {
+  color: #ffd07f;
+}
+
+.tableLink {
+  color: #9ec5ff;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.colTitleWidth {
+  width: 38%;
+}
+
+.colNumeric {
+  width: 9%;
+}
+
+.colSeller {
+  width: 9%;
+}
+
+.colCondition {
+  width: 7%;
+}
+
+.colSignal {
+  width: 8%;
+}
+
+.colLink {
+  width: 5%;
+}
+
 @keyframes fadeIn {
   from {
     transform: translateY(8px);
@@ -309,7 +584,18 @@ button:hover {
   .page {
     padding: 14px;
   }
+  .viewSwitch {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .viewBtn {
+    flex: 1;
+    text-align: center;
+  }
   .controls {
+    grid-template-columns: 1fr;
+  }
+  .itemTopStats {
     grid-template-columns: 1fr;
   }
   .checkbox {

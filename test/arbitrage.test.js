@@ -16,6 +16,12 @@ test("inferStampType identifies global listings", () => {
 
 test("inferStampCount reads explicit counts and defaults", () => {
   assert.equal(inferStampCount("USPS Forever Stamps 20 ct"), 20);
+  assert.equal(
+    inferStampCount(
+      "USPS U.S. Forever Stamps Collectible 20-Pack 1 Sheet Bugs Bunny 2020 Stamps"
+    ),
+    20
+  );
   assert.equal(inferStampCount("USPS Coil"), 100);
   assert.equal(inferStampCount("single forever stamp"), 1);
 });
@@ -29,6 +35,10 @@ test("computeDeal calculates savings and discount", () => {
   assert.equal(deal.discountPct, 31.51);
   assert.equal(deal.underpricedDollars, 4.6);
   assert.equal(deal.underpricedPct, 31.51);
+  assert.equal(deal.costPerStamp, 0.5);
+  assert.equal(deal.uspsPerStamp, 0.73);
+  assert.equal(deal.perStampSavings, 0.23);
+  assert.equal(deal.perStampDiscountPct, 31.51);
   assert.equal(deal.profitable, true);
 });
 
