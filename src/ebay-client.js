@@ -19,26 +19,55 @@ const {
 } = process.env;
 
 function normalizeBrowseItem(item) {
+  const shippingOptions = Array.isArray(item.shippingOptions) ? item.shippingOptions : [];
+  const pricedShipping = shippingOptions
+    .map((option) =>
+      Number(
+        option &&
+          option.shippingCost &&
+          option.shippingCost.value
+          ? option.shippingCost.value
+          : 0
+      )
+    )
+    .filter((cost) => Number.isFinite(cost) && cost >= 0);
+  const shippingCost = pricedShipping.length > 0 ? Math.min(...pricedShipping) : 0;
+
   return {
     id: item.itemId || item.legacyItemId || `ebay-${Math.random()}`,
     title: item.title || "Untitled listing",
     price: Number(item.price && item.price.value ? item.price.value : 0),
+    shippingCost,
+    totalCost: Number(item.price && item.price.value ? item.price.value : 0) + shippingCost,
     currency: item.price && item.price.currency ? item.price.currency : "USD",
     condition: item.condition || "Unknown",
-    seller:
-      item.seller &&
-      (item.seller.username || item.seller.feedbackPercentage || item.seller)
-        ? item.seller.username || String(item.seller)
-        : "unknown_seller",
+    seller: item.seller && item.seller.username ? item.seller.username : "unknown_seller",
+    sellerFeedbackPercentage:
+      item.seller && item.seller.feedbackPercentage
+        ? Number(item.seller.feedbackPercentage)
+        : null,
+    sellerFeedbackScore:
+      item.seller && item.seller.feedbackScore
+        ? Number(item.seller.feedbackScore)
+        : null,
+    sellerTopRated:
+      item.seller && typeof item.seller.topRatedSeller === "boolean"
+        ? item.seller.topRatedSeller
+        : null,
+    sellerAccountType:
+      item.seller && item.seller.sellerAccountType ? item.seller.sellerAccountType : null,
     image: item.image && item.image.imageUrl ? item.image.imageUrl : "",
     itemWebUrl: item.itemWebUrl || "",
+    description: item.shortDescription || item.subtitle || "",
     listedAt:
       item.itemCreationDate || item.itemOriginDate || new Date().toISOString(),
   };
 }
 
-async function fetchToken() {
-  if (EBAY_TOKEN) {
+async function fetchToken(options = {}) {
+  const { allowPrefetched = true } = options;
+
+  if (allowPrefetched && EBAY_TOKEN) {
     return EBAY_TOKEN;
   }
 
@@ -64,15 +93,15 @@ async function fetchToken() {
   return response.data.access_token;
 }
 
-async function fetchFromEbay(query) {
-  const token = await fetchToken();
+async function searchItems(query, token) {
   const searchUrl = `${EBAY_API_BASE_URL}/buy/browse/v1/item_summary/search`;
   const response = await axios.get(searchUrl, {
     params: {
       q: query,
-      limit: 30,
-      sort: "newlyListed",
+      limit: 50,
+      sort: "best_match",
       category_ids: "260",
+      filter: "buyingOptions:{FIXED_PRICE}",
     },
     headers: {
       Authorization: `Bearer ${token}`,
@@ -81,6 +110,28 @@ async function fetchFromEbay(query) {
     },
     timeout: 12000,
   });
+  return response;
+}
+
+async function fetchFromEbay(query) {
+  let token = await fetchToken({ allowPrefetched: true });
+  let response;
+  try {
+    response = await searchItems(query, token);
+  } catch (error) {
+    const isUnauthorized = error.response && error.response.status === 401;
+    const canMintFreshToken = Boolean(EBAY_APP_ID && EBAY_CERT_ID);
+    if (isUnauthorized && canMintFreshToken) {
+      token = await fetchToken({ allowPrefetched: false });
+      response = await searchItems(query, token);
+    } else if (isUnauthorized) {
+      throw new Error(
+        "eBay returned 401. Your EBAY_TOKEN is likely expired. Provide a fresh EBAY_TOKEN or set EBAY_APP_ID and EBAY_CERT_ID."
+      );
+    } else {
+      throw error;
+    }
+  }
 
   const items = response.data && response.data.itemSummaries
     ? response.data.itemSummaries

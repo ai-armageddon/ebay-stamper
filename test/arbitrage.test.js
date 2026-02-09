@@ -27,6 +27,8 @@ test("computeDeal calculates savings and discount", () => {
   assert.equal(deal.marketValue, 14.6);
   assert.equal(deal.savings, 4.6);
   assert.equal(deal.discountPct, 31.51);
+  assert.equal(deal.underpricedDollars, 4.6);
+  assert.equal(deal.underpricedPct, 31.51);
   assert.equal(deal.profitable, true);
 });
 
@@ -71,6 +73,42 @@ test("filters and sort respect controls", () => {
 
   const sortedRecent = sortDeals(deals, "recent");
   assert.equal(sortedRecent[0].listedAt, "2026-02-07T12:00:00Z");
+});
+
+test("trust filter and best sort prioritize credible profitable listings", () => {
+  const rates = { domesticForever: 0.73, globalForever: 1.65 };
+  const deals = [
+    computeDeal(
+      {
+        title: "USPS Forever Stamps 20 ct",
+        condition: "New",
+        price: 11,
+        sellerFeedbackPercentage: 99.9,
+        sellerFeedbackScore: 3000,
+        sellerTopRated: true,
+        listedAt: "2026-02-07T12:00:00Z",
+      },
+      rates
+    ),
+    computeDeal(
+      {
+        title: "USPS Forever Stamps 20 ct",
+        condition: "New",
+        price: 9,
+        sellerFeedbackPercentage: 92,
+        sellerFeedbackScore: 8,
+        sellerTopRated: false,
+        listedAt: "2026-02-07T11:00:00Z",
+      },
+      rates
+    ),
+  ];
+
+  const filtered = applyFilters(deals, { minTrust: 80, profitableOnly: true });
+  assert.equal(filtered.length, 1);
+
+  const sortedBest = sortDeals(filtered, "best");
+  assert.equal(sortedBest[0].trustTier, "high");
 });
 
 test("summary reports best profitable listing", () => {

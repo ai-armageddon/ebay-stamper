@@ -22,7 +22,8 @@ async function fetchToken() {
 
   const tokenResponse = await axios.post(
     EBAY_TOKEN_URL,
-    'grant_type=client_credentials&scope=' + encodeURIComponent(EBAY_SCOPES),
+    'grant_type=client_credentials&scope=' +
+      encodeURIComponent(EBAY_SCOPES || 'https://api.ebay.com/oauth/api_scope'),
     {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',

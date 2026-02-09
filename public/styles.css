@@ -158,6 +158,15 @@ button:hover {
   animation: fadeIn 320ms ease both;
 }
 
+.card.tier-elite {
+  border-color: #d39900;
+  box-shadow: 0 14px 28px rgba(156, 115, 7, 0.25);
+}
+
+.card.tier-strong {
+  border-color: #2f7e50;
+}
+
 .imageWrap {
   position: relative;
   min-height: 190px;
@@ -184,6 +193,26 @@ button:hover {
   color: #684700;
 }
 
+.dealBadge.elite {
+  background: #ffd669;
+  color: #4f3400;
+}
+
+.dealBadge.strong {
+  background: #d6f6dd;
+  color: #104126;
+}
+
+.dealBadge.watch {
+  background: #d9ecff;
+  color: #153a62;
+}
+
+.dealBadge.pass {
+  background: #f6d6d6;
+  color: #611313;
+}
+
 .content {
   padding: 12px 14px 14px;
 }
@@ -195,6 +224,9 @@ button:hover {
 }
 
 .seller,
+.trust,
+.signal,
+.description,
 .pricing,
 .arbitrage,
 .metaLine {
@@ -203,8 +235,35 @@ button:hover {
 }
 
 .seller,
+.trust,
+.description,
 .metaLine {
   color: var(--muted);
+}
+
+.description {
+  min-height: 36px;
+}
+
+.signal {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.signal.elite {
+  color: #8a5b00;
+}
+
+.signal.strong {
+  color: #13502f;
+}
+
+.signal.watch {
+  color: #204972;
+}
+
+.signal.pass {
+  color: #7a1d1d;
 }
 
 .cta {

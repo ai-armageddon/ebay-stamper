@@ -20,8 +20,10 @@
         <label>
           Sort
           <select id="sortBy">
+            <option value="best">Best Opportunities</option>
             <option value="discount">Biggest Discount</option>
             <option value="price">Lowest Price</option>
+            <option value="trust">Highest Trust</option>
             <option value="recent">Recently Listed</option>
           </select>
         </label>
@@ -46,8 +48,25 @@
           <input id="minDiscount" type="number" min="0" step="1" value="0" />
         </label>
         <label>
+          Minimum Trust Score
+          <input id="minTrust" type="number" min="0" max="100" step="1" value="0" />
+        </label>
+        <label>
+          Trust Tier
+          <select id="trustTier">
+            <option value="all">All</option>
+            <option value="high">High Trust</option>
+            <option value="medium">Medium Trust</option>
+            <option value="low">Low Trust</option>
+          </select>
+        </label>
+        <label>
           Query
           <input id="query" type="text" value="usps forever stamps" />
+        </label>
+        <label class="checkbox">
+          <input id="profitableOnly" type="checkbox" checked />
+          Profitable Only
         </label>
         <label class="checkbox">
           <input id="useMock" type="checkbox" />
@@ -72,6 +91,9 @@
         <div class="content">
           <h2 class="title"></h2>
           <p class="seller"></p>
+          <p class="trust"></p>
+          <p class="signal"></p>
+          <p class="description"></p>
           <p class="pricing"></p>
           <p class="arbitrage"></p>
           <p class="metaLine"></p>

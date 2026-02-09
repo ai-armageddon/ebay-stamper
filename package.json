@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node app.js",
     "dev": "node app.js",
+    "build:rate-history": "node scripts/build-rate-history.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {

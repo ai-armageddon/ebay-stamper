@@ -3,6 +3,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { getUspsRates } = require("./src/usps-rates");
+const { getRateHistory } = require("./src/usps-rate-history");
 const { getListings } = require("./src/ebay-client");
 const {
   buildDeals,
@@ -53,10 +54,16 @@ function parseBoolean(value, fallback) {
 }
 
 async function handleDeals(req, res, parsedUrl) {
-  const sortBy = parsedUrl.searchParams.get("sort") || "discount";
+  const sortBy = parsedUrl.searchParams.get("sort") || "best";
   const stampType = parsedUrl.searchParams.get("stampType") || "all";
   const condition = parsedUrl.searchParams.get("condition") || "all";
   const minDiscount = Number(parsedUrl.searchParams.get("minDiscount") || 0);
+  const minTrust = Number(parsedUrl.searchParams.get("minTrust") || 0);
+  const trustTier = parsedUrl.searchParams.get("trustTier") || "all";
+  const profitableOnly = parseBoolean(
+    parsedUrl.searchParams.get("profitableOnly"),
+    false
+  );
   const query = parsedUrl.searchParams.get("q") || "usps forever stamps";
   const useMock = parseBoolean(parsedUrl.searchParams.get("useMock"), false);
 
@@ -68,6 +75,9 @@ async function handleDeals(req, res, parsedUrl) {
       stampType,
       condition,
       minDiscount,
+      minTrust,
+      trustTier,
+      profitableOnly,
     });
     const sortedDeals = sortDeals(filteredDeals, sortBy);
     const summary = getSummary(sortedDeals);
@@ -84,6 +94,39 @@ async function handleDeals(req, res, parsedUrl) {
   } catch (error) {
     sendJson(res, 500, {
       error: "Unable to build arbitrage feed",
+      details: error.message,
+    });
+  }
+}
+
+async function handleRateHistory(req, res, parsedUrl) {
+  const from = parsedUrl.searchParams.get("from");
+  const to = parsedUrl.searchParams.get("to");
+
+  try {
+    const history = await getRateHistory();
+    const filteredDaily = history.dailyRates.filter((row) => {
+      if (from && row.date < from) {
+        return false;
+      }
+      if (to && row.date > to) {
+        return false;
+      }
+      return true;
+    });
+
+    sendJson(res, 200, {
+      generatedAt: history.generatedAt,
+      historyStartDate: history.historyStartDate,
+      historyEndDate: history.historyEndDate,
+      from: from || null,
+      to: to || null,
+      rateChanges: history.rateChanges,
+      dailyRates: filteredDaily,
+    });
+  } catch (error) {
+    sendJson(res, 500, {
+      error: "Unable to build USPS rate history",
       details: error.message,
     });
   }
@@ -113,6 +156,11 @@ function createServer() {
       return;
     }
 
+    if (req.method === "GET" && parsedUrl.pathname === "/api/rates/history") {
+      await handleRateHistory(req, res, parsedUrl);
+      return;
+    }
+
     if (req.method === "GET") {
       handleStatic(req, res, parsedUrl);
       return;
@@ -134,4 +182,5 @@ if (require.main === module) {
 module.exports = {
   createServer,
   handleDeals,
+  handleRateHistory,
 };
