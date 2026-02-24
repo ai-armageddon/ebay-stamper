@@ -637,7 +637,7 @@ async function loadDeals(options = {}) {
     if (recrawl) {
       params.set("recrawl", "true");
     }
-    const response = await fetch(`/api/deals?${params.toString()}`);
+    const response = await fetch(`api/deals?${params.toString()}`);
     const payload = await response.json();
 
     if (!response.ok) {
