@@ -14,69 +14,292 @@ function inferStampType(title) {
   return "domestic";
 }
 
-function inferStampCount(title) {
-  const text = String(title || "").toLowerCase();
-  const currentYear = new Date().getUTCFullYear() + 1;
-  const isLikelyIssueYear = (value) => value >= 1900 && value <= currentYear;
-  const groupedQuantityMatch = text.match(
-    /\b(\d{1,3})\s*(?:rolls?|coils?|packs?|books?|booklets?|sheets?)\s*(?:of|x)\s*(\d{1,4})\b/i
-  );
-  if (groupedQuantityMatch) {
-    const units = Number(groupedQuantityMatch[1]);
-    const perUnit = Number(groupedQuantityMatch[2]);
-    if (!Number.isNaN(units) && !Number.isNaN(perUnit) && units > 0 && perUnit > 0) {
-      return units * perUnit;
-    }
+function normalizeQuantityText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/[^a-z0-9*+\-:/. ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isLikelyIssueYear(value) {
+  const currentYear = new Date().getUTCFullYear() + 2;
+  return value >= 1900 && value <= currentYear;
+}
+
+function canUseQuantityCandidate(count, { strong = false, allowYear = false } = {}) {
+  if (!Number.isFinite(count) || count <= 0 || count > 3000) {
+    return false;
+  }
+  if (!allowYear && isLikelyIssueYear(count)) {
+    return false;
+  }
+  if (!strong && count > 600) {
+    return false;
+  }
+  return true;
+}
+
+function addQuantityCandidate(
+  candidateMap,
+  count,
+  { score = 0, reason = "quantity hint", source = "title", strong = false, allowYear = false } = {}
+) {
+  if (!canUseQuantityCandidate(count, { strong, allowYear })) {
+    return;
+  }
+  const next = {
+    count,
+    score,
+    reason,
+    source,
+    strong,
+  };
+  const existing = candidateMap.get(count);
+  if (!existing || next.score > existing.score) {
+    candidateMap.set(count, next);
+  }
+}
+
+function collectQuantityCandidates(text, { source = "title", sourceBoost = 0 } = {}) {
+  const candidateMap = new Map();
+  if (!text) {
+    return candidateMap;
   }
 
-  const leadingQuantityMatch = text.match(
-    /^(?:usps|u\.s\.|u\.s\.p\.s\.|forever|postage|stamps?|mail|authentic|genuine|sheet|booklet|book|pack|roll|coil|\W)*\s*(\d{1,4})\b/i
-  );
-  if (leadingQuantityMatch && leadingQuantityMatch[1]) {
-    const leadingCount = Number(leadingQuantityMatch[1]);
-    if (
-      Number.isFinite(leadingCount) &&
-      leadingCount > 0 &&
-      leadingCount <= 500 &&
-      !isLikelyIssueYear(leadingCount)
-    ) {
-      return leadingCount;
+  const multipliedPatterns = [
+    /\b(\d{1,3})\s*(?:x|\*)\s*(\d{1,4})\s*(?:stamps?|ct|count|pcs?|pc)?\b/gi,
+    /\b(\d{1,3})\s*(?:books?|booklets?|packs?|rolls?|coils?|sheets?|panes?)\s*(?:of|x)\s*(\d{1,4})\b/gi,
+  ];
+  for (const pattern of multipliedPatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const units = Number(match[1]);
+      const perUnit = Number(match[2]);
+      const count = units * perUnit;
+      addQuantityCandidate(candidateMap, count, {
+        score: 94 + sourceBoost,
+        reason: "multiplied quantity pattern",
+        source,
+        strong: true,
+      });
     }
   }
 
   const explicitPatterns = [
-    /\b(\d{1,4})\s*[- ]?(?:ct|count)\b/i,
-    /\b(\d{1,4})\s*[- ]?(?:pack|pk|book(?:let)?|sheet|roll|coil)\b/i,
-    /\b(?:book|booklet|pack|sheet|lot|coil|roll)\s*(?:of\s*)?(\d{1,4})\b/i,
-    /\b(\d{1,4})\s*(?:stamps?|pcs?|pc)\b/i,
+    {
+      regex: /\b(\d{1,4})\s*[- ]?(ct|count|pcs?|pc)\b/gi,
+      baseScore: 90,
+      reason: "explicit count marker",
+      strong: true,
+    },
+    {
+      regex: /\b(?:count|ct)\s*[:\-]?\s*(\d{1,4})\b/gi,
+      baseScore: 86,
+      reason: "reverse count marker",
+      strong: true,
+    },
+    {
+      regex: /\b(?:book(?:let)?|pack|sheet|pane|roll|coil|lot|bundle)\s*(?:of\s*)?(\d{1,4})\b/gi,
+      baseScore: 84,
+      reason: "package count pattern",
+      strong: true,
+    },
+    {
+      regex: /\b(\d{1,4})\s*[- ]?(?:book(?:let)?|pack|sheet|pane|roll|coil)\b/gi,
+      baseScore: 78,
+      reason: "leading package size",
+      strong: true,
+    },
+    {
+      regex: /\b(\d{1,4})\s*[- ]?stamps?\b/gi,
+      baseScore: 72,
+      reason: "stamps count hint",
+      strong: false,
+    },
   ];
-
-  for (const pattern of explicitPatterns) {
-    const match = text.match(pattern);
-    if (!match || !match[1]) {
-      continue;
+  for (const patternConfig of explicitPatterns) {
+    let match;
+    while ((match = patternConfig.regex.exec(text)) !== null) {
+      const count = Number(match[1]);
+      addQuantityCandidate(candidateMap, count, {
+        score: patternConfig.baseScore + sourceBoost,
+        reason: patternConfig.reason,
+        source,
+        strong: patternConfig.strong,
+      });
     }
-    const count = Number(match[1]);
-    if (Number.isNaN(count) || count <= 0) {
-      continue;
-    }
-
-    const matchText = String(match[0] || "");
-    const hasStrictCountMarker = /\b(?:ct|count|pcs?|pc)\b/i.test(matchText);
-    if (isLikelyIssueYear(count) && !hasStrictCountMarker) {
-      continue;
-    }
-
-    return count;
   }
 
-  if (text.includes("booklet")) {
-    return 20;
+  const leadingQuantityMatch = text.match(
+    /^(?:usps|u\s*s\s*p\s*s|forever|postage|stamps?|mail|authentic|genuine|sheet|booklet|book|pack|roll|coil|\W)*\s*(\d{1,4})\b/i
+  );
+  if (leadingQuantityMatch && leadingQuantityMatch[1]) {
+    addQuantityCandidate(candidateMap, Number(leadingQuantityMatch[1]), {
+      score: 58 + sourceBoost,
+      reason: "leading number fallback",
+      source,
+      strong: false,
+    });
   }
-  if (text.includes("coil")) {
-    return 100;
+
+  if (/\bbooklet\b/.test(text)) {
+    addQuantityCandidate(candidateMap, 20, {
+      score: 44 + sourceBoost,
+      reason: "booklet default size",
+      source,
+      strong: false,
+    });
   }
-  return 1;
+  if (/\bcoil\b/.test(text)) {
+    addQuantityCandidate(candidateMap, 100, {
+      score: 46 + sourceBoost,
+      reason: "coil default size",
+      source,
+      strong: false,
+    });
+  }
+  if (/\b(sheet|pane)\b/.test(text)) {
+    addQuantityCandidate(candidateMap, 20, {
+      score: 40 + sourceBoost,
+      reason: "sheet default size",
+      source,
+      strong: false,
+    });
+  }
+
+  return candidateMap;
+}
+
+function scoreQuantityCandidate(candidate, { totalCost, uspsRate } = {}) {
+  let score = Number(candidate.score || 0);
+  if (candidate.count > 400 && !candidate.strong) {
+    score -= 12;
+  }
+  if (candidate.count > 500 && !candidate.strong) {
+    score -= 24;
+  }
+
+  const numericTotal = Number(totalCost);
+  const numericRate = Number(uspsRate);
+  if (
+    Number.isFinite(numericTotal) &&
+    numericTotal > 0 &&
+    Number.isFinite(numericRate) &&
+    numericRate > 0 &&
+    candidate.count > 0
+  ) {
+    const impliedCostPerStamp = numericTotal / candidate.count;
+    const ratio = impliedCostPerStamp / numericRate;
+    if (ratio < 0.1) {
+      score -= 65;
+    } else if (ratio < 0.18) {
+      score -= 40;
+    } else if (ratio < 0.28) {
+      score -= 20;
+    } else if (ratio > 5) {
+      score -= 10;
+    }
+  }
+
+  return score;
+}
+
+function inferStampQuantity(options = {}) {
+  const input =
+    typeof options === "string" ? { title: options, description: "" } : options || {};
+  const titleText = normalizeQuantityText(input.title || "");
+  const descriptionText = normalizeQuantityText(input.description || "");
+  const combinedText = [titleText, descriptionText].filter(Boolean).join(" ");
+
+  const titleCandidates = collectQuantityCandidates(titleText, {
+    source: "title",
+    sourceBoost: 15,
+  });
+  const descriptionCandidates = collectQuantityCandidates(descriptionText, {
+    source: "description",
+    sourceBoost: 8,
+  });
+  const candidatesMap = new Map();
+  for (const candidate of titleCandidates.values()) {
+    addQuantityCandidate(candidatesMap, candidate.count, candidate);
+  }
+  for (const candidate of descriptionCandidates.values()) {
+    addQuantityCandidate(candidatesMap, candidate.count, candidate);
+  }
+
+  if (candidatesMap.size === 0) {
+    if (combinedText.includes("booklet")) {
+      return {
+        stampCount: 20,
+        confidence: 0.24,
+        source: "fallback",
+        reason: "booklet default size",
+      };
+    }
+    if (combinedText.includes("coil")) {
+      return {
+        stampCount: 100,
+        confidence: 0.24,
+        source: "fallback",
+        reason: "coil default size",
+      };
+    }
+    return {
+      stampCount: 1,
+      confidence: 0.1,
+      source: "fallback",
+      reason: "default quantity",
+    };
+  }
+
+  const ranked = [...candidatesMap.values()]
+    .map((candidate) => ({
+      ...candidate,
+      weightedScore: scoreQuantityCandidate(candidate, {
+        totalCost: input.totalCost,
+        uspsRate: input.uspsRate,
+      }),
+    }))
+    .sort((left, right) => {
+      if (right.weightedScore !== left.weightedScore) {
+        return right.weightedScore - left.weightedScore;
+      }
+      return right.score - left.score;
+    });
+
+  let best = ranked[0];
+  if (best && best.count <= 1) {
+    const nearBestAlternative = ranked.find(
+      (candidate) => candidate.count > 1 && candidate.weightedScore >= best.weightedScore - 14
+    );
+    if (nearBestAlternative) {
+      best = nearBestAlternative;
+    }
+  }
+  if (!best || best.weightedScore < 1) {
+    return {
+      stampCount: 1,
+      confidence: 0.1,
+      source: "fallback",
+      reason: "default quantity",
+    };
+  }
+
+  return {
+    stampCount: best.count,
+    confidence: roundCurrency(clamp((best.weightedScore - 25) / 75, 0.1, 0.99)),
+    source: best.source,
+    reason: best.reason,
+  };
+}
+
+function inferStampCount(title, description = "") {
+  return inferStampQuantity({
+    title,
+    description,
+  }).stampCount;
 }
 
 function computeSellerTrust(listing) {
@@ -161,11 +384,17 @@ function computeOpportunityScore({ discountPct, savings, trustScore, listedAt })
 
 function computeDeal(listing, rates) {
   const stampType = inferStampType(listing.title);
-  const stampCount = inferStampCount(listing.title);
   const uspsRate = stampType === "global" ? rates.globalForever : rates.domesticForever;
   const listingPrice = Number(listing.price || 0);
   const shippingCost = Number(listing.shippingCost || 0);
   const totalCost = Number(listing.totalCost || listingPrice + shippingCost);
+  const quantity = inferStampQuantity({
+    title: listing.title,
+    description: listing.description,
+    totalCost,
+    uspsRate,
+  });
+  const stampCount = quantity.stampCount;
   const marketValue = roundCurrency(uspsRate * stampCount);
   const savings = roundCurrency(marketValue - totalCost);
   const discountPct = marketValue > 0 ? roundCurrency((savings / marketValue) * 100) : 0;
@@ -202,6 +431,9 @@ function computeDeal(listing, rates) {
     ...listing,
     stampType,
     stampCount,
+    stampCountConfidence: quantity.confidence,
+    stampCountSource: quantity.source,
+    stampCountReason: quantity.reason,
     listingPrice: roundCurrency(listingPrice),
     shippingCost: roundCurrency(shippingCost),
     totalCost: roundCurrency(totalCost),
@@ -330,6 +562,7 @@ function getSummary(deals) {
 module.exports = {
   roundCurrency,
   inferStampType,
+  inferStampQuantity,
   inferStampCount,
   computeSellerTrust,
   computeDeal,

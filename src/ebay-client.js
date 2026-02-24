@@ -17,15 +17,38 @@ const {
   EBAY_API_BASE_URL = DEFAULT_API_BASE,
   EBAY_SCOPES = "https://api.ebay.com/oauth/api_scope",
   LISTINGS_CACHE_MS = "90000",
+  LISTINGS_BACKGROUND_REFRESH_MS = "240000",
   EBAY_MAX_RESULTS = "150",
-  EBAY_MAX_PAGES = "5",
+  EBAY_MAX_PAGES = "10",
+  EBAY_PROGRESSIVE_STEP = "100",
+  EBAY_PROGRESSIVE_MAX_RESULTS = "600",
 } = process.env;
-const DEFAULT_LISTINGS_CACHE_MS = Number(LISTINGS_CACHE_MS) || 90000;
-const DEFAULT_MAX_RESULTS = Number(EBAY_MAX_RESULTS) || 150;
-const DEFAULT_MAX_PAGES = Number(EBAY_MAX_PAGES) || 5;
 const MAX_PAGE_SIZE = 50;
-const MAX_ALLOWED_RESULTS = MAX_PAGE_SIZE * DEFAULT_MAX_PAGES;
+const ABSOLUTE_MAX_PAGES = 20;
+const MAX_ALLOWED_RESULTS = MAX_PAGE_SIZE * ABSOLUTE_MAX_PAGES;
+const DEFAULT_LISTINGS_CACHE_MS = Math.max(0, Number(LISTINGS_CACHE_MS) || 90000);
+const DEFAULT_BACKGROUND_REFRESH_MS = Math.max(
+  60000,
+  Number(LISTINGS_BACKGROUND_REFRESH_MS) || 240000
+);
+const DEFAULT_MAX_RESULTS = Math.min(
+  MAX_ALLOWED_RESULTS,
+  Math.max(1, Number(EBAY_MAX_RESULTS) || 150)
+);
+const DEFAULT_MAX_PAGES = Math.min(
+  ABSOLUTE_MAX_PAGES,
+  Math.max(1, Number(EBAY_MAX_PAGES) || 10)
+);
+const DEFAULT_PROGRESSIVE_STEP = Math.min(
+  250,
+  Math.max(25, Number(EBAY_PROGRESSIVE_STEP) || 100)
+);
+const DEFAULT_PROGRESSIVE_MAX_RESULTS = Math.max(
+  DEFAULT_MAX_RESULTS,
+  Math.min(MAX_ALLOWED_RESULTS, Number(EBAY_PROGRESSIVE_MAX_RESULTS) || 600)
+);
 const listingsCache = new Map();
+const listingsRefreshJobs = new Map();
 
 function normalizeBrowseItem(item) {
   const shippingOptions = Array.isArray(item.shippingOptions) ? item.shippingOptions : [];
@@ -41,6 +64,10 @@ function normalizeBrowseItem(item) {
     )
     .filter((cost) => Number.isFinite(cost) && cost >= 0);
   const shippingCost = pricedShipping.length > 0 ? Math.min(...pricedShipping) : 0;
+  const descriptionParts = [
+    item && item.shortDescription ? item.shortDescription : "",
+    item && item.subtitle ? item.subtitle : "",
+  ].filter((part) => String(part || "").trim().length > 0);
 
   return {
     id: item.itemId || item.legacyItemId || `ebay-${Math.random()}`,
@@ -67,7 +94,7 @@ function normalizeBrowseItem(item) {
       item.seller && item.seller.sellerAccountType ? item.seller.sellerAccountType : null,
     image: item.image && item.image.imageUrl ? item.image.imageUrl : "",
     itemWebUrl: item.itemWebUrl || "",
-    description: item.shortDescription || item.subtitle || "",
+    description: descriptionParts.join(" | "),
     listedAt:
       item.itemCreationDate || item.itemOriginDate || new Date().toISOString(),
   };
@@ -169,7 +196,7 @@ async function fetchFromEbay(query, options = {}) {
   const maxPages = sanitizePositiveInt(
     options.maxPages,
     DEFAULT_MAX_PAGES,
-    { min: 1, max: 10 }
+    { min: 1, max: ABSOLUTE_MAX_PAGES }
   );
   const pageSize = Math.min(MAX_PAGE_SIZE, maxResults);
   const pagesBudget = Math.max(1, Math.min(maxPages, Math.ceil(maxResults / pageSize)));
@@ -240,100 +267,290 @@ async function fetchFromEbay(query, options = {}) {
   };
 }
 
+function normalizeQuery(value) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/\s+/g, " ");
+  return normalized || "usps forever stamps";
+}
+
+function buildMockResponse({
+  source,
+  requestedMaxResults,
+  totalMatchesEstimate = mockListings.length,
+  apiCallsUsed = 0,
+} = {}) {
+  const limit = sanitizePositiveInt(requestedMaxResults, DEFAULT_MAX_RESULTS, {
+    min: 1,
+    max: MAX_ALLOWED_RESULTS,
+  });
+  const listings = mockListings.slice(0, limit);
+  return {
+    source,
+    fetchMode: "mock",
+    cacheAgeMs: 0,
+    listings,
+    stats: {
+      comparedCount: listings.length,
+      fetchedCount: 0,
+      totalMatchesEstimate,
+      apiCallsUsed,
+      maxResultsRequested: limit,
+      crawlDepth: listings.length,
+      crawlCap: DEFAULT_PROGRESSIVE_MAX_RESULTS,
+      progressiveStep: DEFAULT_PROGRESSIVE_STEP,
+      lastFetchReason: "mock",
+    },
+  };
+}
+
+function buildListingsResponse(cacheEntry, options = {}) {
+  const {
+    requestedMaxResults = DEFAULT_MAX_RESULTS,
+    fetchMode = "cache",
+    cacheAgeMs = 0,
+    apiCallsUsed = 0,
+    fetchedCount = 0,
+  } = options;
+  const limit = sanitizePositiveInt(requestedMaxResults, DEFAULT_MAX_RESULTS, {
+    min: 1,
+    max: MAX_ALLOWED_RESULTS,
+  });
+  const listings = cacheEntry.listings.slice(0, limit);
+
+  return {
+    source: cacheEntry.source || "ebay",
+    fetchMode,
+    cacheAgeMs: Math.max(0, Math.round(Number(cacheAgeMs || 0))),
+    listings,
+    stats: {
+      comparedCount: listings.length,
+      fetchedCount: Math.max(0, Math.round(Number(fetchedCount || 0))),
+      totalMatchesEstimate: Number(cacheEntry.totalMatchesEstimate || listings.length),
+      apiCallsUsed: Math.max(0, Math.round(Number(apiCallsUsed || 0))),
+      maxResultsRequested: limit,
+      crawlDepth: cacheEntry.listings.length,
+      crawlCap: Math.max(DEFAULT_PROGRESSIVE_MAX_RESULTS, limit),
+      progressiveStep: DEFAULT_PROGRESSIVE_STEP,
+      lastFetchReason: cacheEntry.lastFetchReason || null,
+    },
+  };
+}
+
+function computeFetchTargetResults({
+  existingDepth = 0,
+  requestedMaxResults = DEFAULT_MAX_RESULTS,
+  reason = "initial",
+} = {}) {
+  const baseline = Math.max(DEFAULT_MAX_RESULTS, requestedMaxResults);
+  const dynamicCap = Math.max(DEFAULT_PROGRESSIVE_MAX_RESULTS, requestedMaxResults);
+  let target = baseline;
+
+  if (reason === "recrawl" || reason === "background") {
+    target = Math.max(baseline, existingDepth + DEFAULT_PROGRESSIVE_STEP);
+  } else if (reason === "expand") {
+    target = Math.max(baseline, existingDepth);
+  }
+
+  return Math.min(target, dynamicCap, MAX_ALLOWED_RESULTS);
+}
+
+async function fetchAndCacheListings({
+  query,
+  cacheKey,
+  requestedMaxResults,
+  requestedMaxPages,
+  useMock,
+  reason,
+  existingEntry,
+} = {}) {
+  const existingDepth =
+    existingEntry && Array.isArray(existingEntry.listings)
+      ? existingEntry.listings.length
+      : 0;
+  const targetResults = computeFetchTargetResults({
+    existingDepth,
+    requestedMaxResults,
+    reason,
+  });
+  const targetPages = Math.min(
+    ABSOLUTE_MAX_PAGES,
+    Math.max(requestedMaxPages, Math.ceil(targetResults / MAX_PAGE_SIZE))
+  );
+  const ebayResult = await fetchFromEbay(query, {
+    maxResults: targetResults,
+    maxPages: targetPages,
+  });
+  const listings = ebayResult.listings;
+
+  if (listings.length === 0 && useMock) {
+    return buildMockResponse({
+      source: "mock-empty-ebay",
+      requestedMaxResults,
+      totalMatchesEstimate: ebayResult.totalMatchesEstimate,
+      apiCallsUsed: ebayResult.apiCallsUsed,
+    });
+  }
+
+  const cacheEntry = {
+    source: "ebay",
+    cachedAt: Date.now(),
+    listings,
+    totalMatchesEstimate: ebayResult.totalMatchesEstimate,
+    lastFetchReason: reason,
+  };
+  listingsCache.set(cacheKey, cacheEntry);
+
+  return buildListingsResponse(cacheEntry, {
+    requestedMaxResults,
+    fetchMode: "api",
+    cacheAgeMs: 0,
+    apiCallsUsed: ebayResult.apiCallsUsed,
+    fetchedCount: ebayResult.fetchedCount,
+  });
+}
+
+function maybeStartBackgroundRefresh({
+  cacheKey,
+  query,
+  cacheEntry,
+  requestedMaxResults,
+  requestedMaxPages,
+  useMock,
+  cacheAgeMs,
+} = {}) {
+  if (!cacheEntry) {
+    return;
+  }
+  if (cacheAgeMs < DEFAULT_BACKGROUND_REFRESH_MS) {
+    return;
+  }
+  if (listingsRefreshJobs.has(cacheKey)) {
+    return;
+  }
+  const refreshJob = fetchAndCacheListings({
+    query,
+    cacheKey,
+    requestedMaxResults,
+    requestedMaxPages,
+    useMock,
+    reason: "background",
+    existingEntry: cacheEntry,
+  })
+    .catch(() => null)
+    .finally(() => {
+      listingsRefreshJobs.delete(cacheKey);
+    });
+  listingsRefreshJobs.set(cacheKey, refreshJob);
+}
+
 async function getListings(options = {}) {
   const {
     query = "usps forever stamps",
     useMock = true,
     forceRefresh = false,
+    recrawl = false,
     cacheTtlMs = DEFAULT_LISTINGS_CACHE_MS,
     maxResults = DEFAULT_MAX_RESULTS,
     maxPages = DEFAULT_MAX_PAGES,
   } = options;
+  const normalizedQuery = normalizeQuery(query);
   const requestedMaxResults = sanitizePositiveInt(maxResults, DEFAULT_MAX_RESULTS, {
     min: 1,
     max: MAX_ALLOWED_RESULTS,
   });
   const requestedMaxPages = sanitizePositiveInt(maxPages, DEFAULT_MAX_PAGES, {
     min: 1,
-    max: 10,
+    max: ABSOLUTE_MAX_PAGES,
   });
-  const cacheKey = `${String(query || "").trim().toLowerCase()}|${requestedMaxResults}|${requestedMaxPages}`;
+  const cacheKey = normalizedQuery.toLowerCase();
   const now = Date.now();
   const cached = listingsCache.get(cacheKey);
+  const cacheAgeMs = cached ? now - cached.cachedAt : Number.MAX_SAFE_INTEGER;
+  const isCacheFresh = cacheAgeMs <= Number(cacheTtlMs || DEFAULT_LISTINGS_CACHE_MS);
+  const hasEnoughCachedListings =
+    cached && Array.isArray(cached.listings) && cached.listings.length >= requestedMaxResults;
 
-  if (
+  if (!forceRefresh && !recrawl && hasEnoughCachedListings) {
+    maybeStartBackgroundRefresh({
+      cacheKey,
+      query: normalizedQuery,
+      cacheEntry: cached,
+      requestedMaxResults,
+      requestedMaxPages,
+      useMock,
+      cacheAgeMs,
+    });
+    return buildListingsResponse(cached, {
+      requestedMaxResults,
+      fetchMode: isCacheFresh ? "cache" : "cache-stale",
+      cacheAgeMs,
+      apiCallsUsed: 0,
+      fetchedCount: 0,
+    });
+  }
+
+  const needsExpansion =
     !forceRefresh &&
+    !recrawl &&
     cached &&
-    now - cached.cachedAt <= Number(cacheTtlMs || DEFAULT_LISTINGS_CACHE_MS)
-  ) {
-    const cachedStats = cached.payload && cached.payload.stats ? cached.payload.stats : {};
-    return {
-      ...cached.payload,
-      fetchMode: "cache",
-      cacheAgeMs: now - cached.cachedAt,
-      stats: {
-        ...cachedStats,
+    Array.isArray(cached.listings) &&
+    cached.listings.length < requestedMaxResults;
+  const fetchReason = recrawl
+    ? "recrawl"
+    : forceRefresh
+    ? "force"
+    : needsExpansion
+    ? "expand"
+    : "initial";
+
+  const inFlight = listingsRefreshJobs.get(cacheKey);
+  if (inFlight && !forceRefresh && !recrawl && !needsExpansion) {
+    await inFlight.catch(() => null);
+    const refreshedCache = listingsCache.get(cacheKey);
+    if (refreshedCache && refreshedCache.listings.length >= requestedMaxResults) {
+      const refreshedAgeMs = Math.max(0, Date.now() - refreshedCache.cachedAt);
+      return buildListingsResponse(refreshedCache, {
+        requestedMaxResults,
+        fetchMode: "cache",
+        cacheAgeMs: refreshedAgeMs,
         apiCallsUsed: 0,
-      },
-    };
+        fetchedCount: 0,
+      });
+    }
   }
 
   try {
-    const ebayResult = await fetchFromEbay(query, {
-      maxResults: requestedMaxResults,
-      maxPages: requestedMaxPages,
+    return await fetchAndCacheListings({
+      query: normalizedQuery,
+      cacheKey,
+      requestedMaxResults,
+      requestedMaxPages,
+      useMock,
+      reason: fetchReason,
+      existingEntry: cached || null,
     });
-    const listings = ebayResult.listings;
-    if (listings.length === 0 && useMock) {
-      return {
-        source: "mock-empty-ebay",
-        fetchMode: "mock",
-        cacheAgeMs: 0,
-        listings: mockListings,
-        stats: {
-          comparedCount: mockListings.length,
-          fetchedCount: 0,
-          totalMatchesEstimate: ebayResult.totalMatchesEstimate,
-          apiCallsUsed: ebayResult.apiCallsUsed,
-          maxResultsRequested: requestedMaxResults,
-        },
-      };
-    }
-    const payload = {
-      source: "ebay",
-      fetchMode: "api",
-      cacheAgeMs: 0,
-      listings,
-      stats: {
-        comparedCount: listings.length,
-        fetchedCount: ebayResult.fetchedCount,
-        totalMatchesEstimate: ebayResult.totalMatchesEstimate,
-        apiCallsUsed: ebayResult.apiCallsUsed,
-        maxResultsRequested: ebayResult.maxResultsRequested,
-      },
-    };
-    listingsCache.set(cacheKey, {
-      cachedAt: now,
-      payload,
-    });
-    return payload;
   } catch (error) {
+    const fallbackCache = listingsCache.get(cacheKey);
+    if (fallbackCache) {
+      const staleAgeMs = Math.max(0, Date.now() - fallbackCache.cachedAt);
+      return buildListingsResponse(fallbackCache, {
+        requestedMaxResults,
+        fetchMode: "cache-stale",
+        cacheAgeMs: staleAgeMs,
+        apiCallsUsed: 0,
+        fetchedCount: 0,
+      });
+    }
     if (!useMock) {
       throw error;
     }
-    return {
+    return buildMockResponse({
       source: "mock-fallback",
-      fetchMode: "mock",
-      cacheAgeMs: 0,
-      listings: mockListings,
-      stats: {
-        comparedCount: mockListings.length,
-        fetchedCount: 0,
-        totalMatchesEstimate: mockListings.length,
-        apiCallsUsed: 0,
-        maxResultsRequested: requestedMaxResults,
-      },
-    };
+      requestedMaxResults,
+      totalMatchesEstimate: mockListings.length,
+      apiCallsUsed: 0,
+    });
   }
 }
 

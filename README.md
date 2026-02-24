@@ -16,6 +16,8 @@ A Node.js app that finds potentially underpriced USPS stamp listings on eBay by 
 - eBay Browse API integration with OAuth client-credentials flow.
 - Automatic retry with fresh token after 401 responses.
 - Listing cache to reduce repeated eBay API calls.
+- Cache-first refreshes with periodic background recrawls.
+- Manual "recrawl deeper" flow to gradually widen crawl depth.
 - USPS rate scraping with 24-hour disk cache and JSON fallback.
 - Optional mock listing fallback for development/demo continuity.
 - Rate history pipeline (announcement scraping + daily timeline materialization).
@@ -99,6 +101,7 @@ Query params:
 - `profitableOnly`: `true | false`.
 - `useMock`: `true | false`.
 - `forceEbayRefresh`: `true | false`.
+- `recrawl`: `true | false` (force a deeper live crawl now).
 - `maxResults` (number): clamped by server bounds.
 - `maxPages` (number): clamped by server bounds.
 

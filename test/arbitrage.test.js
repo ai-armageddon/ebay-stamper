@@ -28,14 +28,23 @@ test("inferStampCount reads explicit counts and defaults", () => {
     ),
     20
   );
+  assert.equal(
+    inferStampCount("2025 USPS Forever Stamps Tulips Booklet of 20"),
+    20
+  );
+  assert.equal(
+    inferStampCount("USPS Forever Stamps 2025 Tulips", "Authentic booklet of 20 stamps"),
+    20
+  );
   assert.equal(inferStampCount("USPS Coil"), 100);
   assert.equal(inferStampCount("single forever stamp"), 1);
 });
 
 test("computeDeal calculates savings and discount", () => {
-  const listing = { title: "USPS Forever Stamps 20 ct", price: 10.0 };
+  const listing = { title: "2025 USPS Forever Stamps 20 ct", price: 10.0 };
   const rates = { domesticForever: 0.73, globalForever: 1.65 };
   const deal = computeDeal(listing, rates);
+  assert.equal(deal.stampCount, 20);
   assert.equal(deal.marketValue, 14.6);
   assert.equal(deal.savings, 4.6);
   assert.equal(deal.discountPct, 31.51);

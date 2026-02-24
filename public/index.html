@@ -69,8 +69,8 @@
           <input id="minTrust" type="number" min="0" max="100" step="1" value="0" />
         </label>
         <label>
-          Max Results
-          <input id="maxResults" type="number" min="50" max="250" step="50" value="150" />
+          Max Compared Listings
+          <input id="maxResults" type="number" min="50" max="600" step="25" value="150" />
         </label>
         <label>
           Trust Tier
@@ -94,12 +94,8 @@
           Allow Mock Fallback
         </label>
         <label class="checkbox">
-          <input id="forceEbayRefresh" type="checkbox" />
-          Force Live eBay Refresh
-        </label>
-        <label class="checkbox">
           <input id="autoRefresh" type="checkbox" />
-          Auto Refresh
+          Auto Refresh (Cache First)
         </label>
         <label>
           Refresh Every
@@ -111,7 +107,10 @@
             <option value="300">300 sec</option>
           </select>
         </label>
-        <button id="refreshBtn" type="button">Refresh Deals</button>
+        <div class="controlActions">
+          <button id="refreshBtn" type="button">Refresh View</button>
+          <button id="recrawlBtn" class="secondaryBtn" type="button">Recrawl Deeper</button>
+        </div>
       </section>
 
       <section class="quickLook" id="quickLook"></section>

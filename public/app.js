@@ -18,10 +18,10 @@ const refs = {
   query: document.getElementById("query"),
   profitableOnly: document.getElementById("profitableOnly"),
   useMock: document.getElementById("useMock"),
-  forceEbayRefresh: document.getElementById("forceEbayRefresh"),
   autoRefresh: document.getElementById("autoRefresh"),
   autoRefreshSec: document.getElementById("autoRefreshSec"),
   refreshBtn: document.getElementById("refreshBtn"),
+  recrawlBtn: document.getElementById("recrawlBtn"),
 };
 let lastDeals = [];
 let lastPayload = null;
@@ -117,7 +117,6 @@ function collectUiState() {
     query: refs.query.value,
     profitableOnly: refs.profitableOnly.checked,
     useMock: refs.useMock.checked,
-    forceEbayRefresh: refs.forceEbayRefresh.checked,
     autoRefresh: refs.autoRefresh.checked,
     autoRefreshSec: refs.autoRefreshSec.value,
     currentViewMode,
@@ -154,7 +153,6 @@ function loadUiState() {
     if (state.query !== undefined) refs.query.value = state.query;
     if (typeof state.profitableOnly === "boolean") refs.profitableOnly.checked = state.profitableOnly;
     if (typeof state.useMock === "boolean") refs.useMock.checked = state.useMock;
-    if (typeof state.forceEbayRefresh === "boolean") refs.forceEbayRefresh.checked = state.forceEbayRefresh;
     if (typeof state.autoRefresh === "boolean") refs.autoRefresh.checked = state.autoRefresh;
     if (state.autoRefreshSec) refs.autoRefreshSec.value = state.autoRefreshSec;
     if (state.currentViewMode) currentViewMode = state.currentViewMode;
@@ -224,9 +222,10 @@ function setStats(payload) {
     statCard("Elite Deals", String(payload.summary.eliteCount || 0)),
     statCard("Average Discount", `${Number(payload.summary.avgDiscount || 0).toFixed(2)}%`),
     statCard("Average Trust", `${Number(payload.summary.avgTrust || 0).toFixed(1)}/100`),
-    statCard("Compared", String(payload.totalCompared || 0)),
+    statCard("Compared This View", String(payload.totalCompared || 0)),
     statCard("After Filters", String(payload.totalAfterFilters || 0)),
-    statCard("Pulled This Call", String(crawl.fetchedCount || payload.totalListings || 0)),
+    statCard("Crawl Depth", String(crawl.crawlDepth || payload.totalListings || 0)),
+    statCard("Pulled This Call", String(crawl.fetchedCount || 0)),
     statCard("eBay API Calls", String(crawl.apiCallsUsed || 0)),
   ].join("");
 }
@@ -240,14 +239,22 @@ function setMeta(payload) {
     ? `~${Number(crawl.totalMatchesEstimate)}`
     : "n/a";
   const cacheLabel =
-    payload.listingsFetchMode === "cache"
+    payload.listingsFetchMode === "cache" || payload.listingsFetchMode === "cache-stale"
       ? `cache (${Math.round(Number(payload.listingsCacheAgeMs || 0) / 1000)}s old)`
       : payload.listingsFetchMode || "api";
-  refs.meta.textContent =
-    `Rates: ${payload.ratesSource} | Listings: ${payload.listingsSource} via ${cacheLabel} | ` +
-    `Compared: ${payload.totalCompared} | Filtered: ${payload.totalAfterFilters} | ` +
-    `Pulled: ${crawl.fetchedCount || payload.totalListings} of estimated ${estimate} matches | ` +
-    `Requested: ${crawl.maxResultsRequested || refs.maxResults.value} | Best: ${best}`;
+  refs.meta.innerHTML = `
+    <div class="metaChips">
+      <span class="metaChip">Rates: ${escapeHtml(payload.ratesSource)}</span>
+      <span class="metaChip">Listings: ${escapeHtml(payload.listingsSource)} via ${escapeHtml(
+        cacheLabel
+      )}</span>
+      <span class="metaChip">Compared: ${payload.totalCompared}</span>
+      <span class="metaChip">Filtered: ${payload.totalAfterFilters}</span>
+      <span class="metaChip">Crawled: ${crawl.crawlDepth || payload.totalListings}</span>
+      <span class="metaChip">Matches Est: ${escapeHtml(estimate)}</span>
+    </div>
+    <p class="metaBest">Best: ${escapeHtml(best)}</p>
+  `;
 }
 
 function makeBadge(deal) {
@@ -349,9 +356,10 @@ function renderCardDeals(deals) {
     perStamp.className = `perStamp ${deal.perStampSavings >= 0 ? "good" : "bad"}`;
     arbitrage.textContent = `Underpriced vs USPS: ${formatMoney(deal.underpricedDollars)} (${deal.underpricedPct}%)`;
     arbitrage.className = `arbitrage ${deal.profitable ? "good" : "bad"}`;
+    const countConfidence = `${Math.round(Number(deal.stampCountConfidence || 0) * 100)}%`;
     metaLine.textContent = `${deal.stampType.toUpperCase()} | ${deal.stampCount} stamps | ${deal.trustSignals
       .slice(0, 2)
-      .join(" | ")}`;
+      .join(" | ")} | Qty Parse ${countConfidence} (${deal.stampCountSource || "title"})`;
     cta.href = safeUrl(deal.itemWebUrl);
     badge.textContent = makeBadge(deal);
     badge.className = `dealBadge ${badgeClass(deal)}`;
@@ -430,11 +438,12 @@ function renderBarDeals(deals) {
 
     const footer = document.createElement("div");
     footer.className = "barFooter";
+    const countConfidence = `${Math.round(Number(deal.stampCountConfidence || 0) * 100)}%`;
     footer.textContent = `${deal.buySignal} | Trust ${Number(
       deal.trustScore || 0
     ).toFixed(1)} | Seller ${deal.seller} | ${deal.stampType.toUpperCase()} ${
       deal.stampCount
-    } ct`;
+    } ct (${countConfidence} qty parse)`;
 
     const link = document.createElement("a");
     link.className = "barCta";
@@ -503,6 +512,7 @@ function renderListDeals(deals) {
           <td class="colTitle">${escapeHtml(deal.title)}</td>
           <td>${formatMoney(deal.costPerStamp)}</td>
           <td>${formatMoney(deal.uspsPerStamp)}</td>
+          <td>${deal.stampCount}</td>
           <td>${formatMoney(deal.totalCost)}</td>
           <td>${multiplier}</td>
           <td>${formatMoney(deal.underpricedDollars)}</td>
@@ -529,6 +539,7 @@ function renderListDeals(deals) {
           <col class="colNumeric" />
           <col class="colNumeric" />
           <col class="colNumeric" />
+          <col class="colNumeric" />
           <col class="colSeller" />
           <col class="colCondition" />
           <col class="colSignal" />
@@ -539,6 +550,7 @@ function renderListDeals(deals) {
             <th>${listHeader("Title", "title")}</th>
             <th>${listHeader("Buy / Stamp", "costPerStamp")}</th>
             <th>${listHeader("USPS / Stamp", "uspsPerStamp")}</th>
+            <th>${listHeader("Qty", "stampCount")}</th>
             <th>${listHeader("Total Buy", "totalCost")}</th>
             <th>${listHeader("Value x", "multiplier")}</th>
             <th>${listHeader("Spread $", "underpricedDollars")}</th>
@@ -594,16 +606,18 @@ function setViewMode(mode) {
 }
 
 async function loadDeals(options = {}) {
-  const { trigger = "manual", preserveScroll = true } = options;
+  const { trigger = "manual", preserveScroll = true, recrawl = false } = options;
   if (isLoadingDeals) {
     return;
   }
   isLoadingDeals = true;
   const scrollState = preserveScroll ? captureScrollState() : null;
 
-  if (trigger === "manual") {
+  if (trigger === "manual" || trigger === "recrawl") {
     refs.refreshBtn.disabled = true;
-    refs.refreshBtn.textContent = "Loading...";
+    refs.recrawlBtn.disabled = true;
+    refs.refreshBtn.textContent = trigger === "recrawl" ? "Refreshing..." : "Loading...";
+    refs.recrawlBtn.textContent = trigger === "recrawl" ? "Recrawling..." : "Recrawl Deeper";
   }
   try {
     const params = new URLSearchParams({
@@ -613,14 +627,16 @@ async function loadDeals(options = {}) {
       minDiscount: refs.minDiscount.value,
       minTrust: refs.minTrust.value,
       maxResults: String(
-        parsePositiveInt(refs.maxResults.value, 150, { min: 50, max: 250 })
+        parsePositiveInt(refs.maxResults.value, 150, { min: 50, max: 600 })
       ),
       trustTier: refs.trustTier.value,
       q: refs.query.value,
       profitableOnly: refs.profitableOnly.checked ? "true" : "false",
       useMock: refs.useMock.checked ? "true" : "false",
-      forceEbayRefresh: refs.forceEbayRefresh.checked ? "true" : "false",
     });
+    if (recrawl) {
+      params.set("recrawl", "true");
+    }
     const response = await fetch(`/api/deals?${params.toString()}`);
     const payload = await response.json();
 
@@ -641,9 +657,11 @@ async function loadDeals(options = {}) {
     refs.grid.classList.remove("hidden");
     refs.grid.innerHTML = `<div class="empty">${error.message}</div>`;
   } finally {
-    if (trigger === "manual") {
+    if (trigger === "manual" || trigger === "recrawl") {
       refs.refreshBtn.disabled = false;
-      refs.refreshBtn.textContent = "Refresh Deals";
+      refs.recrawlBtn.disabled = false;
+      refs.refreshBtn.textContent = "Refresh View";
+      refs.recrawlBtn.textContent = "Recrawl Deeper";
     }
     isLoadingDeals = false;
   }
@@ -652,6 +670,18 @@ async function loadDeals(options = {}) {
 refs.refreshBtn.addEventListener("click", () =>
   loadDeals({ trigger: "manual", preserveScroll: true })
 );
+refs.recrawlBtn.addEventListener("click", () => {
+  const bumped = parsePositiveInt(refs.maxResults.value, 150, {
+    min: 50,
+    max: 600,
+  });
+  const next = Math.min(600, bumped + 50);
+  if (next !== bumped) {
+    refs.maxResults.value = String(next);
+  }
+  saveUiState();
+  loadDeals({ trigger: "recrawl", preserveScroll: true, recrawl: true });
+});
 refs.viewButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const mode = button.getAttribute("data-view-mode");
@@ -676,7 +706,6 @@ refs.barThreshold.addEventListener("input", () => {
   refs.query,
   refs.profitableOnly,
   refs.useMock,
-  refs.forceEbayRefresh,
 ].forEach((control) => {
   control.addEventListener("change", saveUiState);
 });

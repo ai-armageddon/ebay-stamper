@@ -18,6 +18,7 @@ body {
   margin: 0;
   color: var(--ink);
   font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+  line-height: 1.45;
   background: radial-gradient(circle at 20% 0%, #fff9de 0%, var(--bg) 50%);
 }
 
@@ -99,14 +100,16 @@ h1 {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 14px;
+  padding: 16px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px 12px;
 }
 
 label {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -116,7 +119,7 @@ input,
 select,
 button {
   border-radius: 10px;
-  border: 1px solid #bdb5a6;
+  border: 1px solid #b9b09d;
   background: #fff;
   font: inherit;
   padding: 10px 12px;
@@ -130,6 +133,23 @@ button {
   font-weight: 600;
   cursor: pointer;
   transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.controlActions {
+  display: flex;
+  flex-direction: column;
+  justify-content: end;
+  gap: 8px;
+}
+
+.secondaryBtn {
+  background: #f6f3ea;
+  color: #1a3556;
+  border: 1px solid #8ea2bc;
+}
+
+.secondaryBtn:hover {
+  box-shadow: 0 8px 18px rgba(28, 58, 95, 0.18);
 }
 
 button:hover {
@@ -197,6 +217,33 @@ button:hover {
   margin-top: 12px;
   color: var(--muted);
   font-size: 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.metaChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.metaChip {
+  background: #f3ecdd;
+  border: 1px solid #dacdaf;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  color: #394d42;
+}
+
+.metaBest {
+  margin: 10px 0 0;
+  color: #25332c;
+  line-height: 1.35;
+  font-size: 0.92rem;
+  font-weight: 600;
 }
 
 .grid {
@@ -314,6 +361,7 @@ button:hover {
 .metaLine {
   margin: 0 0 7px;
   font-size: 0.9rem;
+  line-height: 1.35;
 }
 
 .seller,
@@ -478,8 +526,8 @@ button:hover {
 }
 
 .listShell {
-  background: #0f1722;
-  border: 1px solid #2b3a4f;
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 14px;
   overflow: auto;
 }
@@ -494,10 +542,10 @@ button:hover {
 .listTable th,
 .listTable td {
   padding: 10px 12px;
-  border-bottom: 1px solid #233246;
+  border-bottom: 1px solid #e5ddd0;
   font-size: 0.88rem;
   text-align: left;
-  color: #dbe8f7;
+  color: #2a3b32;
   vertical-align: top;
 }
 
@@ -505,7 +553,7 @@ button:hover {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: #142033;
+  background: #f4eee1;
 }
 
 .listTable td {
@@ -515,7 +563,7 @@ button:hover {
 }
 
 .listTable tbody tr:hover {
-  background: #18263a;
+  background: #f8f2e6;
 }
 
 .colTitle {
@@ -532,7 +580,7 @@ button:hover {
 .listSortBtn {
   border: 0;
   background: transparent;
-  color: #deebfb;
+  color: #2f4338;
   font: inherit;
   font-weight: 700;
   padding: 0;
@@ -540,25 +588,25 @@ button:hover {
 }
 
 .listSortBtn.active {
-  color: #ffd07f;
+  color: #1d5f42;
 }
 
 .tableLink {
-  color: #9ec5ff;
+  color: #20579f;
   text-decoration: none;
   font-weight: 700;
 }
 
 .colTitleWidth {
-  width: 44%;
+  width: 38%;
 }
 
 .colNumeric {
-  width: 7%;
+  width: 6%;
 }
 
 .colSeller {
-  width: 9%;
+  width: 8%;
 }
 
 .colCondition {
@@ -566,11 +614,11 @@ button:hover {
 }
 
 .colSignal {
-  width: 8%;
+  width: 7%;
 }
 
 .colLink {
-  width: 5%;
+  width: 4%;
 }
 
 @keyframes fadeIn {

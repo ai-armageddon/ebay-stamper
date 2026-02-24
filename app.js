@@ -68,8 +68,9 @@ async function handleDeals(req, res, parsedUrl) {
     parsedUrl.searchParams.get("forceEbayRefresh"),
     false
   );
+  const recrawl = parseBoolean(parsedUrl.searchParams.get("recrawl"), false);
   const maxResults = Number(parsedUrl.searchParams.get("maxResults") || 150);
-  const maxPages = Number(parsedUrl.searchParams.get("maxPages") || 5);
+  const maxPages = Number(parsedUrl.searchParams.get("maxPages") || 10);
   const query = parsedUrl.searchParams.get("q") || "usps forever stamps";
   const useMock = parseBoolean(parsedUrl.searchParams.get("useMock"), false);
 
@@ -78,7 +79,8 @@ async function handleDeals(req, res, parsedUrl) {
     const listingsResult = await getListings({
       query,
       useMock,
-      forceRefresh: forceEbayRefresh,
+      forceRefresh: forceEbayRefresh || recrawl,
+      recrawl,
       maxResults,
       maxPages,
     });
@@ -108,6 +110,7 @@ async function handleDeals(req, res, parsedUrl) {
         totalMatchesEstimate: listingsResult.listings.length,
         apiCallsUsed: 1,
         maxResultsRequested: maxResults,
+        crawlDepth: listingsResult.listings.length,
       },
       totalCompared: allDeals.length,
       totalAfterFilters: filteredDeals.length,
